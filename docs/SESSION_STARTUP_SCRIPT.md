@@ -3,12 +3,13 @@
 
 ### 🚀 **MANDATORY SESSION INITIALIZATION**
 
-**Copy and run these commands at the start of EVERY development session:**
+**Tell Claude to run these DollhouseMCP function calls at the start of EVERY development session:**
 
-```bash
-# Activate all required DollhouseMCP elements
+```
+Please activate all required DollhouseMCP elements:
+
 activate_element "Meta-Problem-Solver-v2" "agents"
-activate_element "Session-State-Tracker" "skills"
+activate_element "Session-State-Tracker" "skills" 
 activate_element "Meta-Problem-Orchestration" "skills"
 activate_element "Ruthless-Technical-Critic" "personas"
 activate_element "Document-Synchronization-Specialist" "personas"

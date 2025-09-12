@@ -2,9 +2,10 @@
 
 ## 🚀 Quick Start for New Sessions
 
-### Step 1: Activate DollhouseMCP Elements
-```bash
-# Copy and paste these commands at session start:
+### Step 1: Ask Claude to Activate DollhouseMCP Elements
+```
+Request: "Please activate all required DollhouseMCP elements:"
+
 activate_element "Meta-Problem-Solver-v2" "agents"
 activate_element "Session-State-Tracker" "skills"
 activate_element "Meta-Problem-Orchestration" "skills"
