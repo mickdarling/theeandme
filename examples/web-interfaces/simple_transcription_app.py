@@ -18,7 +18,7 @@ import sounddevice as sd
 import numpy as np
 
 # Add src to path for imports
-sys.path.append(str(Path(__file__).parent.parent / "src"))
+sys.path.append(str(Path(__file__).parent.parent.parent / "src"))
 
 from audio.stt import WhisperSTT
 
