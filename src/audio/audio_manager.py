@@ -191,24 +191,26 @@ class AudioManager:
                 
                 # Add as input device if it has input channels
                 if info['maxInputChannels'] > 0:
+                    is_default_input = (i == self.pyaudio_instance.get_default_input_device_info()['index'])
                     devices.append(AudioDeviceInfo(
                         index=i,
                         name=info['name'],
                         channels=info['maxInputChannels'],
                         sample_rate=info['defaultSampleRate'],
                         is_input=True,
-                        is_default=(i == self.pyaudio_instance.get_default_input_device_info()['index'])
+                        is_default=is_default_input
                     ))
                 
-                # Add as output device if it has output channels
+                # Add as output device if it has output channels  
                 if info['maxOutputChannels'] > 0:
+                    is_default_output = (i == self.pyaudio_instance.get_default_output_device_info()['index'])
                     devices.append(AudioDeviceInfo(
                         index=i,
                         name=info['name'],
                         channels=info['maxOutputChannels'],
                         sample_rate=info['defaultSampleRate'],
                         is_input=False,
-                        is_default=(i == self.pyaudio_instance.get_default_output_device_info()['index'])
+                        is_default=is_default_output
                     ))
             
             except Exception as e:
