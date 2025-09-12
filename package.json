@@ -1,13 +1,47 @@
 {
   "name": "theeandme",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Always-on context-aware voice interface system for Mac Studios using camera-based attention detection and local LLM processing",
+  "main": "src/main.py",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "python src/main.py",
+    "dev": "python src/main.py --debug",
+    "test": "pytest tests/",
+    "test:watch": "pytest tests/ --watch",
+    "lint": "flake8 src/ tests/",
+    "format": "black src/ tests/",
+    "typecheck": "mypy src/",
+    "setup": "pip install -r requirements.txt",
+    "setup:ollama": "curl -fsSL https://ollama.com/install.sh | sh && ollama pull llama3.1:8b",
+    "clean": "find . -type d -name '__pycache__' -delete && find . -name '*.pyc' -delete"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "voice-interface",
+    "ai",
+    "llm",
+    "computer-vision",
+    "speech-recognition",
+    "mac-studio",
+    "whisper",
+    "ollama",
+    "context-aware",
+    "privacy-first"
+  ],
+  "author": "Mick Darling",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mickdarling/theeandme.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mickdarling/theeandme/issues"
+  },
+  "homepage": "https://github.com/mickdarling/theeandme#readme",
+  "engines": {
+    "node": ">=18.0.0",
+    "python": ">=3.9.0"
+  },
+  "devDependencies": {},
+  "dependencies": {}
 }

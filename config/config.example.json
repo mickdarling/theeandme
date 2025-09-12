@@ -1,0 +1,64 @@
+{
+  "system": {
+    "mac_id": "mac_studio_m1",
+    "other_mac_ips": ["192.168.1.100"],
+    "coordination_port": 8888,
+    "log_level": "INFO"
+  },
+  "llm": {
+    "service": "ollama",
+    "base_url": "http://localhost:11434",
+    "model": "llama3.1:8b",
+    "fallback_models": ["mistral:7b", "llama3.1:8b-q4_0"],
+    "max_tokens": 1000,
+    "temperature": 0.7,
+    "timeout": 30
+  },
+  "audio": {
+    "sample_rate": 16000,
+    "chunk_size": 1024,
+    "buffer_duration_seconds": 3.0,
+    "vad_threshold": 0.7,
+    "min_speech_duration_ms": 300,
+    "silence_timeout_seconds": 2.0,
+    "input_device": null,
+    "output_device": null
+  },
+  "vision": {
+    "camera_device_id": 0,
+    "face_detection_fps": 30,
+    "face_confidence_threshold": 0.7,
+    "attention_center_threshold": 0.3,
+    "attention_timeout_seconds": 5.0,
+    "processing_resolution": [640, 480]
+  },
+  "speech": {
+    "whisper_model": "base",
+    "whisper_device": "cpu",
+    "language": "en",
+    "tts_voice": "Daniel",
+    "tts_rate": 180
+  },
+  "coordination": {
+    "session_timeout_minutes": 30,
+    "handoff_delay_ms": 500,
+    "heartbeat_interval_seconds": 10,
+    "max_retry_attempts": 3,
+    "encryption_enabled": true,
+    "shared_secret": "change-this-secret-key"
+  },
+  "features": {
+    "multi_user_support": false,
+    "conversation_memory": true,
+    "context_awareness": true,
+    "wake_word_fallback": false,
+    "debug_mode": false
+  },
+  "performance": {
+    "max_concurrent_sessions": 1,
+    "audio_processing_threads": 2,
+    "vision_processing_threads": 1,
+    "memory_limit_mb": 2048,
+    "cleanup_interval_minutes": 60
+  }
+}

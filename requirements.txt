@@ -1,0 +1,44 @@
+# Core AI/ML Dependencies
+torch>=2.0.0
+torchaudio>=2.0.0
+numpy>=1.21.0
+
+# Speech Processing
+openai-whisper>=20231117
+whisper-cpp-python>=0.1.0
+silero-vad>=4.0.0
+
+# Computer Vision
+opencv-python>=4.8.0
+Pillow>=9.0.0
+
+# Audio Processing
+pyaudio>=0.2.11
+sounddevice>=0.4.6
+librosa>=0.10.0
+webrtcvad>=2.0.10
+
+# Network & Communication
+requests>=2.31.0
+websockets>=11.0.0
+python-socketio>=5.8.0
+cryptography>=41.0.0
+
+# Utilities
+pyyaml>=6.0.1
+python-dotenv>=1.0.0
+psutil>=5.9.0
+asyncio-mqtt>=0.13.0
+
+# Development Tools
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.7.0
+flake8>=6.0.0
+mypy>=1.5.0
+
+# Optional: Faster inference on Apple Silicon
+# Uncomment if you want to use optimized models
+# torch-audio>=2.0.0
+# accelerate>=0.21.0
+# transformers>=4.33.0
