@@ -192,6 +192,40 @@ examples/
 
 ---
 
+## 🎯 **NEXT SESSION SETUP REQUIREMENTS**
+
+### **CRITICAL FIRST STEP**: DollhouseMCP Element Activation
+
+Before starting any development work, **MUST** run the session startup script:
+
+📄 **File**: `/Users/mick/Developer/theeandme/docs/SESSION_STARTUP_SCRIPT.md`
+
+**Required Elements to Activate (13 total):**
+- 1 Agent: Meta-Problem-Solver-v2
+- 2 Skills: Session-State-Tracker, Meta-Problem-Orchestration  
+- 7 Personas: All critical analysis and feedback specialists
+- 3 Templates: Documentation, state reporting, implementation guidance
+
+**Follow-up**: Execute complete autonomous prompt from:
+📄 **File**: `/Users/mick/Developer/theeandme/docs/complete_autonomous_prompt_v2.md`
+
+This ensures:
+- ✅ Research-first approach to all problems
+- ✅ Hardware reality checks against actual setup  
+- ✅ Circuit breakers to prevent infinite loops
+- ✅ Quality gates for solution delivery
+- ✅ Autonomous session state tracking
+- ✅ Documentation synchronization
+
+### **Session Initialization Checklist**
+- [ ] Run all 13 element activation commands
+- [ ] Verify successful activation (should show 13/13)
+- [ ] Execute complete autonomous prompt
+- [ ] Initialize session state tracker
+- [ ] Begin development with autonomous system active
+
+---
+
 *Session completed: September 12, 2025 @ 4:30 PM*  
 *Status: **Web Voice Interface Operational** - Ready for echo cancellation work*  
-*Next Focus: **Production-ready always-listening + repository cleanup***
+*Next Focus: **DollhouseMCP setup + Production-ready always-listening + repository cleanup***
