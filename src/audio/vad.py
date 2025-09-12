@@ -178,18 +178,40 @@ class SileroVAD:
         if not speech_timestamps:
             return 0.0
         
-        # Calculate percentage of chunk that contains speech
-        chunk_duration = len(audio_chunk) / self.sample_rate
-        speech_duration = sum(end - start for start, end in speech_timestamps)
-        speech_ratio = min(speech_duration / chunk_duration, 1.0)
-        
-        # Factor in audio energy
-        rms_energy = np.sqrt(np.mean(audio_chunk ** 2))
-        energy_factor = min(rms_energy * 10, 1.0)  # Scale RMS to 0-1 range
-        
-        # Combined confidence score
-        confidence = (speech_ratio * 0.7) + (energy_factor * 0.3)
-        return min(confidence, 1.0)
+        try:
+            # Calculate percentage of chunk that contains speech
+            chunk_duration = len(audio_chunk) / self.sample_rate
+            speech_duration = 0.0
+            
+            for segment in speech_timestamps:
+                if isinstance(segment, dict):
+                    # Handle dict format: {'start': ..., 'end': ...}
+                    start = float(segment.get('start', 0))
+                    end = float(segment.get('end', 0))
+                elif len(segment) == 2:
+                    # Handle tuple format: (start, end)
+                    start = float(segment[0])
+                    end = float(segment[1])
+                else:
+                    continue
+                
+                speech_duration += (end - start)
+            
+            speech_ratio = min(speech_duration / chunk_duration, 1.0) if chunk_duration > 0 else 0.0
+            
+            # Factor in audio energy
+            rms_energy = np.sqrt(np.mean(audio_chunk ** 2))
+            energy_factor = min(rms_energy * 10, 1.0)  # Scale RMS to 0-1 range
+            
+            # Combined confidence score
+            confidence = (speech_ratio * 0.7) + (energy_factor * 0.3)
+            return min(confidence, 1.0)
+            
+        except Exception as e:
+            logger.warning(f"Error calculating VAD confidence: {e}")
+            # Fallback to energy-based confidence
+            rms_energy = np.sqrt(np.mean(audio_chunk ** 2))
+            return min(rms_energy * 5, 1.0)
     
     def is_voice_active(self) -> bool:
         """Check if voice is currently active (convenience method)."""
