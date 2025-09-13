@@ -29,16 +29,19 @@ class VoiceIntentAutomation:
         # Command patterns for intent recognition
         self.intent_patterns = {
             'open_app': [
-                r'open\s+(\w+)',
-                r'launch\s+(\w+)',
-                r'start\s+(\w+)',
-                r'run\s+(\w+)'
+                r'open\s+(?:up\s+)?(\w+)',  # Fixed: "open up Chrome" → captures "Chrome"
+                r'launch\s+(?:up\s+)?(\w+)',
+                r'start\s+(?:up\s+)?(\w+)',
+                r'run\s+(?:up\s+)?(\w+)',
+                r'open\s+the\s+(\w+)\s+(?:app|application)?',  # "open the notes app"
+                r'launch\s+the\s+(\w+)\s+(?:app|application)?'
             ],
             'search_web': [
-                r'search\s+for\s+(.+)',
+                r'search\s+(?:for\s+)?(.+)',  # "search for X" or "search X"
                 r'google\s+(.+)',
                 r'look\s+up\s+(.+)',
-                r'find\s+(.+)\s+online'
+                r'find\s+(.+)(?:\s+online)?',  # "find X" or "find X online"
+                r'search\s+(?:on\s+)?(.+)'  # "search on Google for X"
             ],
             'browser_navigate': [
                 r'go\s+to\s+(\w+)\s+and\s+search\s+for\s+(.+)',

@@ -20,6 +20,7 @@ import threading
 import aiohttp
 import time
 import wave
+from threading import Lock
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, render_template_string, jsonify, request
@@ -35,6 +36,7 @@ from RealtimeSTT import AudioToTextRecorder
 # Import our breakthrough components
 from enhanced_echo_blocker_with_voice_fingerprinting import EnhancedEchoBlocker
 from voice_intent_automation import VoiceIntentAutomation
+from voice_calibration_persistence import VoiceCalibrationManager
 
 # Flask app setup
 app = Flask(__name__)
@@ -45,8 +47,10 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 recorder = None
 echo_blocker = None
 voice_automation = None
+voice_calibration = None
 always_listening_active = False
 session_dir = None
+text_processing_lock = Lock()  # Thread safety for voice processing
 
 # Performance metrics
 performance_metrics = {
@@ -537,119 +541,122 @@ def text_detected(text):
     """Handle transcribed text with triple-layer echo blocking"""
     global performance_metrics
 
-    performance_metrics['total_transcriptions'] += 1
-    timestamp = datetime.now().strftime("%H:%M:%S")
+    # CRITICAL FIX: Thread-safe text processing
+    with text_processing_lock:
+        performance_metrics['total_transcriptions'] += 1
+        timestamp = datetime.now().strftime("%H:%M:%S")
 
-    print(f"\n🎤 Transcribed: '{text}' at {timestamp}")
+        print(f"\n🎤 Transcribed: '{text}' at {timestamp}")
 
-    # CRITICAL FIX: Don't use AI audio for voice fingerprinting of USER input
-    # Instead, rely more heavily on time+content correlation until we can capture user audio
-    # This prevents the false positive problem where user voice gets analyzed as AI voice
+        # CRITICAL FIX: Don't use AI audio for voice fingerprinting of USER input
+        # Instead, rely more heavily on time+content correlation until we can capture user audio
+        # This prevents the false positive problem where user voice gets analyzed as AI voice
 
-    # For now, disable voice fingerprinting and use only time+content detection
-    # This preserves the breakthrough time+content logic while avoiding the audio file mix-up
-    is_echo, reason, detection_data = echo_blocker.is_likely_echo(text, audio_file_path=None)
+        # For now, disable voice fingerprinting and use only time+content detection
+        # This preserves the breakthrough time+content logic while avoiding the audio file mix-up
+        is_echo, reason, detection_data = echo_blocker.is_likely_echo(text, audio_file_path=None)
 
-    if is_echo:
-        performance_metrics['blocked_echoes'] += 1
+        if is_echo:
+            performance_metrics['blocked_echoes'] += 1
 
-        # Determine which layers detected the echo
-        layers = detection_data.get("final_decision", {}).get("detection_layers", {})
-        if layers.get("time_content") and layers.get("voice_fingerprinting"):
-            performance_metrics['combined_blocks'] += 1
-        elif layers.get("voice_fingerprinting"):
-            performance_metrics['voice_fingerprint_blocks'] += 1
-        elif layers.get("time_content"):
-            performance_metrics['time_content_blocks'] += 1
+            # Determine which layers detected the echo
+            layers = detection_data.get("final_decision", {}).get("detection_layers", {})
+            if layers.get("time_content") and layers.get("voice_fingerprinting"):
+                performance_metrics['combined_blocks'] += 1
+            elif layers.get("voice_fingerprinting"):
+                performance_metrics['voice_fingerprint_blocks'] += 1
+            elif layers.get("time_content"):
+                performance_metrics['time_content_blocks'] += 1
 
-        print(f"🔇 BLOCKED ECHO: '{text}' - {reason}")
-        socketio.emit('blocked_echo', {
-            'text': text,
-            'reason': reason,
-            'timestamp': timestamp,
-            'detection_layers': layers
-        })
-    else:
-        performance_metrics['passed_inputs'] += 1
-        performance_metrics['perfect_captures'] += 1
-
-        print(f"✅ PASSED: '{text}' - Human voice detected")
-        socketio.emit('user_transcription', {
-            'text': text,
-            'timestamp': timestamp
-        })
-
-        # BREAKTHROUGH: Check for automation commands first
-        automation_result = voice_automation.execute_voice_command(text)
-
-        if automation_result['automation_performed']:
-            # This was an automation command - emit automation result
-            socketio.emit('automation_executed', {
+            print(f"🔇 BLOCKED ECHO: '{text}' - {reason}")
+            socketio.emit('blocked_echo', {
                 'text': text,
-                'automation_result': automation_result,
+                'reason': reason,
+                'timestamp': timestamp,
+                'detection_layers': layers
+            })
+        else:
+            performance_metrics['passed_inputs'] += 1
+            performance_metrics['perfect_captures'] += 1
+
+            print(f"✅ PASSED: '{text}' - Human voice detected")
+            socketio.emit('user_transcription', {
+                'text': text,
                 'timestamp': timestamp
             })
 
-            # Still provide AI feedback about the automation
-            if automation_result['success']:
-                ai_response = f"Successfully executed: {automation_result['message']}"
+            # BREAKTHROUGH: Check for automation commands first
+            automation_result = voice_automation.execute_voice_command(text)
+
+            if automation_result['automation_performed']:
+                # This was an automation command - emit automation result
+                socketio.emit('automation_executed', {
+                    'text': text,
+                    'automation_result': automation_result,
+                    'timestamp': timestamp
+                })
+
+                # Still provide AI feedback about the automation
+                if automation_result['success']:
+                    ai_response = f"Successfully executed: {automation_result['message']}"
+                else:
+                    ai_response = f"Automation failed: {automation_result['message']}"
             else:
-                ai_response = f"Automation failed: {automation_result['message']}"
-        else:
-            # Regular conversation - generate normal AI response
-            ai_response = get_ai_response(text)
+                # Regular conversation - generate normal AI response
+                ai_response = get_ai_response(text)
 
-        performance_metrics['ai_responses'] += 1
+            performance_metrics['ai_responses'] += 1
 
-        # Record AI voice for future echo detection
-        ai_audio_path = record_ai_voice(ai_response)
-        echo_blocker.set_ai_response(ai_response, speaking_duration=3.0)
+            # Record AI voice for future echo detection
+            ai_audio_path = record_ai_voice(ai_response)
+            echo_blocker.set_ai_response(ai_response, speaking_duration=3.0)
 
-        socketio.emit('ai_response', {
-            'text': ai_response,
-            'timestamp': datetime.now().strftime("%H:%M:%S"),
-            'generation_time': 1.0,
-            'ai_audio_file': ai_audio_path
+            socketio.emit('ai_response', {
+                'text': ai_response,
+                'timestamp': datetime.now().strftime("%H:%M:%S"),
+                'generation_time': 1.0,
+                'ai_audio_file': ai_audio_path
+            })
+
+            print(f"🤖 AI Response: '{ai_response}'")
+
+        # Update metrics
+        total = performance_metrics['total_transcriptions']
+        success_rate = (performance_metrics['passed_inputs'] / total * 100) if total > 0 else 100
+
+        socketio.emit('metrics_update', {
+            'totalTranscriptions': performance_metrics['total_transcriptions'],
+            'blockedEchoes': performance_metrics['blocked_echoes'],
+            'passedInputs': performance_metrics['passed_inputs'],
+            'aiResponses': performance_metrics['ai_responses'],
+            'perfectCaptures': performance_metrics['perfect_captures'],
+            'successRate': f"{success_rate:.1f}%"
         })
-
-        print(f"🤖 AI Response: '{ai_response}'")
-
-    # Update metrics
-    total = performance_metrics['total_transcriptions']
-    success_rate = (performance_metrics['passed_inputs'] / total * 100) if total > 0 else 100
-
-    socketio.emit('metrics_update', {
-        'totalTranscriptions': performance_metrics['total_transcriptions'],
-        'blockedEchoes': performance_metrics['blocked_echoes'],
-        'passedInputs': performance_metrics['passed_inputs'],
-        'aiResponses': performance_metrics['ai_responses'],
-        'perfectCaptures': performance_metrics['perfect_captures'],
-        'successRate': f"{success_rate:.1f}%"
-    })
 
 @socketio.on('start_listening')
 def start_listening():
     global recorder, always_listening_active
 
+    # CRITICAL FIX: Prevent multiple listening sessions
+    if always_listening_active:
+        print("⚠️  Already listening - ignoring duplicate start request")
+        emit('status_update', {
+            'status': 'listening',
+            'message': 'Already Listening - BREAKTHROUGH MODE'
+        })
+        return
+
     if recorder is None:
-        print("🎤 Initializing RealtimeSTT with breakthrough settings...")
+        print("🎤 Initializing RealtimeSTT with calibrated settings...")
+
+        # Load saved calibration settings
+        config = voice_calibration.get_recorder_config()
+        print(f"📊 Using calibrated settings from previous sessions")
+
         recorder = AudioToTextRecorder(
-            spinner=False,
-            model="base.en",
-            language="en",
-            silero_sensitivity=0.05,
-            webrtc_sensitivity=3,
-            post_speech_silence_duration=0.7,
-            min_length_of_recording=0,
-            min_gap_between_recordings=0,
-            enable_realtime_transcription=False,
-            realtime_processing_pause=0.2,
-            realtime_model_type='tiny.en',
             on_realtime_transcription_update=lambda x: None,
             on_realtime_transcription_stabilized=lambda x: None,
-
-            # BREAKTHROUGH: 300ms pre-recording buffer for perfect sentence capture
-            pre_recording_buffer_duration=0.3  # This is the key breakthrough setting
+            **config  # Use all saved calibration settings
         )
 
     print("🎯 Starting Always Listening mode (Production 2025)")
@@ -694,7 +701,7 @@ def stop_listening():
     print("🛑 Always Listening stopped")
 
 def main():
-    global echo_blocker, voice_automation, session_dir
+    global echo_blocker, voice_automation, voice_calibration, session_dir
 
     print("🚀 Production Voice Interface 2025 - BREAKTHROUGH IMPLEMENTATION WITH APP AUTOMATION")
     print("=" * 80)
@@ -702,13 +709,15 @@ def main():
     print("✅ Triple-Layer Echo Blocking")
     print("✅ Spectral Voice Analysis")
     print("✅ Zero AI Voice Loop Prevention")
-    print("✅ Voice Intent Automation (NEW)")
+    print("✅ Voice Intent Automation")
+    print("✅ Persistent Voice Calibration (NEW)")
     print("=" * 80)
 
     # Setup components
     session_dir = setup_session_directory()
     echo_blocker = EnhancedEchoBlocker(enable_voice_fingerprinting=True)
     voice_automation = VoiceIntentAutomation()
+    voice_calibration = VoiceCalibrationManager()
 
     print(f"🧠 Enhanced Echo Blocker initialized")
     print(f"🎵 Voice Fingerprinting: {'ENABLED' if echo_blocker.enable_voice_fingerprinting else 'DISABLED'}")
