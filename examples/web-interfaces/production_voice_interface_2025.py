@@ -69,7 +69,7 @@ def setup_session_directory():
     return session_dir
 
 def record_ai_voice(text: str) -> str:
-    """Record AI voice generation using macOS TTS"""
+    """Record AI voice generation using macOS TTS and PLAY it through speakers"""
     if not session_dir:
         setup_session_directory()
 
@@ -82,11 +82,15 @@ def record_ai_voice(text: str) -> str:
         safe_text = text.replace('"', '\\"').replace("'", "\\'")
         os.system(f'say "{safe_text}" -o "{ai_filepath}" --data-format=LEI16@16000')
 
-        print(f"🎙️ AI Voice recorded: {ai_audio_file}")
+        # CRITICAL FIX: Actually PLAY the AI response through speakers
+        import subprocess
+        subprocess.run(['afplay', str(ai_filepath)], check=True)
+
+        print(f"🔊 AI Voice recorded AND PLAYED: {ai_audio_file}")
         return str(ai_filepath)
 
     except Exception as e:
-        print(f"❌ Failed to record AI voice: {e}")
+        print(f"❌ Failed to record/play AI voice: {e}")
         return None
 
 def get_ai_response(user_text: str) -> str:
@@ -511,16 +515,13 @@ def text_detected(text):
 
     print(f"\n🎤 Transcribed: '{text}' at {timestamp}")
 
-    # Save audio file path (RealtimeSTT should provide this)
-    # For now, we'll use the most recent AI voice file if available
-    latest_ai_audio = None
-    if session_dir:
-        ai_files = list(session_dir.glob("ai_voice_*.wav"))
-        if ai_files:
-            latest_ai_audio = str(max(ai_files, key=lambda p: p.stat().st_mtime))
+    # CRITICAL FIX: Don't use AI audio for voice fingerprinting of USER input
+    # Instead, rely more heavily on time+content correlation until we can capture user audio
+    # This prevents the false positive problem where user voice gets analyzed as AI voice
 
-    # Triple-layer echo detection
-    is_echo, reason, detection_data = echo_blocker.is_likely_echo(text, latest_ai_audio)
+    # For now, disable voice fingerprinting and use only time+content detection
+    # This preserves the breakthrough time+content logic while avoiding the audio file mix-up
+    is_echo, reason, detection_data = echo_blocker.is_likely_echo(text, audio_file_path=None)
 
     if is_echo:
         performance_metrics['blocked_echoes'] += 1
