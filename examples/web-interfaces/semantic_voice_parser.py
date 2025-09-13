@@ -8,11 +8,12 @@ like "Open a Chrome browser" or "Search for Python tutorials in Safari"
 """
 
 import json
-import requests
 import time
 from typing import Dict, Optional, Any, List
 from dataclasses import dataclass
 import re
+import urllib.request
+import urllib.parse
 
 
 @dataclass
@@ -36,7 +37,8 @@ class SemanticVoiceParser:
 
     def __init__(self, ollama_base_url: str = "http://localhost:11434"):
         self.ollama_base_url = ollama_base_url
-        self.model_name = "llama3.1:7b"  # Optimal for voice commands per research
+        self.model_name = "llama3.1:latest"  # Use latest model, often optimized
+        self.backup_model = "llama3.1:8b"   # Fallback to 8b model
 
         # Verify Ollama is available
         self.is_available = self._check_ollama_availability()
@@ -60,18 +62,30 @@ class SemanticVoiceParser:
         """Check if Ollama is running and model is available"""
         try:
             # Check if Ollama is running
-            response = requests.get(f"{self.ollama_base_url}/api/tags", timeout=5)
-            if response.status_code != 200:
-                return False
+            req = urllib.request.Request(f"{self.ollama_base_url}/api/tags")
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status != 200:
+                    return False
 
-            # Check if our preferred model is available
-            models = response.json().get('models', [])
-            available_models = [model['name'] for model in models]
+                # Check if our preferred model is available
+                response_data = json.loads(response.read().decode('utf-8'))
+                models = response_data.get('models', [])
+                available_models = [model['name'] for model in models]
 
             if self.model_name not in available_models:
-                # Try to find any 7B model
+                # Try backup model first
+                if self.backup_model in available_models:
+                    self.model_name = self.backup_model
+                    print(f"🦙 Using backup model: {self.model_name}")
+                    return True
+
+                # Try to find any suitable fast model
                 for model in available_models:
-                    if '7b' in model.lower() or 'llama' in model.lower():
+                    if 'instruct' in model.lower() and ('7b' in model.lower() or '8b' in model.lower()):
+                        self.model_name = model
+                        print(f"🦙 Using fast instruct model: {self.model_name}")
+                        return True
+                    elif '7b' in model.lower() or '8b' in model.lower():
                         self.model_name = model
                         print(f"🦙 Using available model: {self.model_name}")
                         return True
@@ -85,89 +99,89 @@ class SemanticVoiceParser:
             print(f"⚠️  Ollama connection failed: {e}")
             return False
 
-    def _create_semantic_prompt(self, voice_text: str) -> str:
-        """Create structured prompt for semantic voice command understanding"""
+    def _create_conversational_prompt(self, voice_text: str) -> str:
+        """Create conversational prompt that responds naturally AND parses commands"""
 
-        prompt = f"""Parse this voice command into JSON format. Understand the user's intent and extract all meaningful components.
+        prompt = f"""You are a voice assistant. The user said: "{voice_text}"
 
-Command: "{voice_text}"
+Respond with ONLY a JSON object in this exact format:
 
-Respond with only this JSON structure:
-{{
-  "intent_type": "open_app" or "search_web" or "create_note" or "edit_note" or "multi_step" or "system_command" or "unknown",
-  "primary_action": "main verb like open, search, create, edit, delete, etc",
-  "target_app": "app name if any",
-  "search_query": "search terms if any",
-  "note_content": "text content for notes",
-  "note_title": "title for new notes",
-  "steps": ["only for complex multi-step commands with clear sequential actions"],
-  "parameters": {{"additional context like file paths, URLs, etc"}},
-  "safety_level": "safe" or "potentially_destructive" or "destructive",
-  "confidence": 0.9
-}}
-
-IMPORTANT: Only use "multi_step" for commands with clear sequential actions like "open X and then do Y". Single unclear words should be "unknown".
+{{"response": "natural conversational response", "intent_type": "open_app|search_web|create_note|chat|unknown", "target_app": "app_name or null", "search_query": "query or null", "confidence": 0.9}}
 
 Examples:
-"Open Chrome" → {{"intent_type": "open_app", "primary_action": "open", "target_app": "chrome", "confidence": 0.9, "safety_level": "safe"}}
-"Search Python tutorials" → {{"intent_type": "search_web", "primary_action": "search", "search_query": "Python tutorials", "confidence": 0.9, "safety_level": "safe"}}
-"Create a note about today's meeting" → {{"intent_type": "create_note", "primary_action": "create", "target_app": "notes", "note_title": "Today's Meeting", "confidence": 0.9, "safety_level": "safe"}}
-"Open TextEdit and write hello world" → {{"intent_type": "multi_step", "steps": ["open textedit", "write hello world"], "confidence": 0.9, "safety_level": "safe"}}
-"Delete all my files" → {{"intent_type": "system_command", "primary_action": "delete", "safety_level": "destructive", "confidence": 0.8}}
+"Open Chrome" → {{"response":"Opening Chrome for you!","intent_type":"open_app","target_app":"chrome","confidence":0.9}}
+"How are you?" → {{"response":"I'm doing great, thanks for asking!","intent_type":"chat","confidence":0.9}}
+"Tell me a joke" → {{"response":"Why don't scientists trust atoms? Because they make up everything!","intent_type":"chat","confidence":0.9}}
+"Search Python" → {{"response":"I'll search for Python information.","intent_type":"search_web","search_query":"Python","confidence":0.9}}
 
-JSON only:"""
+Respond with ONLY the JSON object, no other text:"""
 
         return prompt
 
     def _query_ollama(self, prompt: str) -> Optional[Dict]:
-        """Send prompt to Ollama and get structured response"""
+        """Send prompt to Ollama with optimized streaming response"""
         try:
             payload = {
                 "model": self.model_name,
                 "prompt": prompt,
-                "stream": False,
+                "stream": False,  # Non-streaming is actually faster for short responses
                 "options": {
-                    "temperature": 0.1,  # Low temperature for consistent parsing
-                    "top_p": 0.9,
-                    "max_tokens": 200,   # Short response for JSON
-                    "stop": ["\n\n", "```"]  # Stop at obvious completion points
+                    "temperature": 0.3,  # Slightly higher for natural conversation
+                    "top_p": 0.8,      # Allow more creativity for responses
+                    "num_predict": 120, # Enough tokens for conversational response + JSON
+                    "stop": ["\n\n"],   # Stop at double newline
+                    "repeat_penalty": 1.1
                 }
             }
 
-            response = requests.post(
+            # Convert payload to JSON and encode
+            json_data = json.dumps(payload).encode('utf-8')
+
+            # Create request
+            req = urllib.request.Request(
                 f"{self.ollama_base_url}/api/generate",
-                json=payload,
-                timeout=10
+                data=json_data,
+                headers={'Content-Type': 'application/json'}
             )
 
-            if response.status_code == 200:
-                result = response.json()
-                response_text = result.get('response', '').strip()
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    response_data = json.loads(response.read().decode('utf-8'))
+                    response_text = response_data.get('response', '').strip()
 
-                # Try to extract JSON from response
-                try:
-                    if not response_text:
-                        return None
+                    # Try to parse as JSON directly first
+                    if response_text:
+                        try:
+                            # Try direct JSON parsing first
+                            parsed_json = json.loads(response_text.strip())
+                            return parsed_json
+                        except json.JSONDecodeError:
+                            # If that fails, try to extract JSON from text
+                            try:
+                                start_idx = response_text.find('{')
+                                if start_idx != -1:
+                                    # Find the matching closing brace
+                                    brace_count = 0
+                                    end_idx = start_idx
+                                    for i, char in enumerate(response_text[start_idx:], start_idx):
+                                        if char == '{':
+                                            brace_count += 1
+                                        elif char == '}':
+                                            brace_count -= 1
+                                            if brace_count == 0:
+                                                end_idx = i + 1
+                                                break
 
-                    # Remove any markdown formatting
-                    response_text = re.sub(r'```json\s*|\s*```', '', response_text)
-                    response_text = response_text.strip()
-
-                    # Try to find JSON object in response
-                    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                    if json_match:
-                        response_text = json_match.group(0)
-
-                    # Parse JSON
-                    parsed_json = json.loads(response_text)
-                    return parsed_json
-
-                except json.JSONDecodeError:
-                    # Silently fall back to regex parsing
+                                    if end_idx > start_idx:
+                                        json_str = response_text[start_idx:end_idx]
+                                        parsed_json = json.loads(json_str)
+                                        return parsed_json
+                            except json.JSONDecodeError:
+                                pass
                     return None
-            else:
-                print(f"⚠️  Ollama API error: {response.status_code}")
-                return None
+                else:
+                    print(f"⚠️  Ollama API error: {response.status}")
+                    return None
 
         except Exception as e:
             print(f"⚠️  Ollama query failed: {e}")
@@ -217,22 +231,21 @@ JSON only:"""
                 raw_command=voice_text
             )
 
-        # Try LLM-based parsing first
+        # Try conversational LLM parsing first
         if self.is_available:
-            prompt = self._create_semantic_prompt(voice_text)
+            prompt = self._create_conversational_prompt(voice_text)
             llm_result = self._query_ollama(prompt)
 
             if llm_result:
                 try:
                     return CommandIntent(
                         intent_type=llm_result.get('intent_type', 'unknown'),
-                        primary_action=llm_result.get('primary_action', 'unknown'),
+                        primary_action=llm_result.get('intent_type', 'unknown'),  # Use intent_type as action for simplicity
                         target_app=llm_result.get('target_app'),
                         search_query=llm_result.get('search_query'),
                         note_content=llm_result.get('note_content'),
                         note_title=llm_result.get('note_title'),
-                        steps=llm_result.get('steps'),
-                        parameters=llm_result.get('parameters', {}),
+                        parameters={'response': llm_result.get('response', '')},  # Store conversational response
                         safety_level=llm_result.get('safety_level', 'safe'),
                         confidence=float(llm_result.get('confidence', 0.0)),
                         raw_command=voice_text
