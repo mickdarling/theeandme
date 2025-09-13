@@ -100,11 +100,13 @@ Respond with only this JSON structure:
   "search_query": "search terms if any",
   "note_content": "text content for notes",
   "note_title": "title for new notes",
-  "steps": ["array of sequential actions for multi-step commands"],
+  "steps": ["only for complex multi-step commands with clear sequential actions"],
   "parameters": {{"additional context like file paths, URLs, etc"}},
   "safety_level": "safe" or "potentially_destructive" or "destructive",
   "confidence": 0.9
 }}
+
+IMPORTANT: Only use "multi_step" for commands with clear sequential actions like "open X and then do Y". Single unclear words should be "unknown".
 
 Examples:
 "Open Chrome" → {{"intent_type": "open_app", "primary_action": "open", "target_app": "chrome", "confidence": 0.9, "safety_level": "safe"}}

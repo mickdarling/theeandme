@@ -495,9 +495,17 @@ class EnhancedVoiceAutomation:
         self.recent_context['last_search_query'] = search_query
 
         try:
+            # Create a new intent for opening the browser
+            browser_intent = CommandIntent(
+                intent_type="open_app",
+                primary_action="open",
+                target_app=browser,
+                raw_command=f"open {browser}"
+            )
+
             # Open browser first
             browser_app = self.app_mappings.get(browser.lower(), "Google Chrome")
-            open_success, open_msg = self._execute_open_app(intent)
+            open_success, open_msg = self._execute_open_app(browser_intent)
 
             if not open_success:
                 return False, f"🌐 Could not open browser: {open_msg}"
