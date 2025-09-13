@@ -35,7 +35,7 @@ from RealtimeSTT import AudioToTextRecorder
 
 # Import our breakthrough components
 from enhanced_echo_blocker_with_voice_fingerprinting import EnhancedEchoBlocker
-from voice_intent_automation import VoiceIntentAutomation
+from enhanced_voice_automation import EnhancedVoiceAutomation  # New enhanced system
 from voice_calibration_persistence import VoiceCalibrationManager
 
 # Flask app setup
@@ -301,7 +301,7 @@ HTML_TEMPLATE = '''
     <div class="header">
         <h1>🚀 Production Voice Interface 2025</h1>
         <span class="breakthrough-badge">BREAKTHROUGH</span>
-        <p>Triple-Layer Echo Blocking • Voice Fingerprinting • Perfect Sentence Capture</p>
+        <p>Dynamic Commands • Safety Validation • Multi-Step Workflows • Notes Integration</p>
     </div>
 
     <div class="container">
@@ -322,7 +322,7 @@ HTML_TEMPLATE = '''
             </div>
 
             <div style="text-align: center; font-size: 12px; opacity: 0.7; margin-top: 10px;">
-                💡 Speak naturally - the system will distinguish your voice from AI responses
+                💡 Try: "Open Chrome and search for Python tutorials then create a note about it"
             </div>
         </div>
 
@@ -360,12 +360,13 @@ HTML_TEMPLATE = '''
             </div>
 
             <div style="margin-top: 20px; font-size: 12px; opacity: 0.7;">
-                <h4>🎯 Breakthrough Features:</h4>
+                <h4>🎯 Enhanced Features:</h4>
                 <ul style="margin: 5px 0; padding-left: 20px;">
-                    <li>RealtimeSTT perfect sentence capture</li>
-                    <li>Spectral analysis for macOS TTS detection</li>
-                    <li>Triple-layer echo prevention</li>
-                    <li>Zero AI voice loop guarantee</li>
+                    <li>Dynamic command understanding (no limitations)</li>
+                    <li>LLM-powered safety validation</li>
+                    <li>Multi-step workflow execution</li>
+                    <li>Notes app integration (create/edit)</li>
+                    <li>Contextual follow-up commands</li>
                 </ul>
             </div>
         </div>
@@ -741,20 +742,22 @@ def handle_connect():
 def main():
     global echo_blocker, voice_automation, voice_calibration, session_dir
 
-    print("🚀 Production Voice Interface 2025 - BREAKTHROUGH IMPLEMENTATION WITH APP AUTOMATION")
+    print("🚀 Production Voice Interface 2025 - ENHANCED DYNAMIC AUTOMATION")
     print("=" * 80)
     print("✅ RealtimeSTT Perfect Sentence Capture")
     print("✅ Triple-Layer Echo Blocking")
-    print("✅ Spectral Voice Analysis")
-    print("✅ Zero AI Voice Loop Prevention")
-    print("✅ Voice Intent Automation")
-    print("✅ Persistent Voice Calibration (NEW)")
+    print("✅ Dynamic Command Processing (No Limitations)")
+    print("✅ LLM-Powered Safety Validation")
+    print("✅ Multi-Step Workflow Engine")
+    print("✅ Notes App Integration (Create/Edit)")
+    print("✅ Contextual Follow-up Commands")
+    print("✅ Persistent Voice Calibration")
     print("=" * 80)
 
     # Setup components
     session_dir = setup_session_directory()
     echo_blocker = EnhancedEchoBlocker(enable_voice_fingerprinting=True)
-    voice_automation = VoiceIntentAutomation()
+    voice_automation = EnhancedVoiceAutomation()  # Use new enhanced system
     voice_calibration = VoiceCalibrationManager()
 
     print(f"🧠 Enhanced Echo Blocker initialized")

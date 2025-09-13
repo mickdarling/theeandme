@@ -18,11 +18,15 @@ import re
 @dataclass
 class CommandIntent:
     """Structured representation of parsed voice command intent"""
-    intent_type: str  # "open_app", "search_web", "multi_app_workflow", etc.
-    primary_action: str  # "open", "search", "create", etc.
-    target_app: Optional[str] = None  # "chrome", "safari", "notes"
+    intent_type: str  # "open_app", "search_web", "create_note", "multi_step", etc.
+    primary_action: str  # "open", "search", "create", "edit", "delete", etc.
+    target_app: Optional[str] = None  # "chrome", "safari", "notes", "textedit"
     search_query: Optional[str] = None  # "Python tutorials"
+    note_content: Optional[str] = None  # Text content for notes
+    note_title: Optional[str] = None  # Title for new notes
+    steps: Optional[List[str]] = None  # Multi-step command breakdown
     parameters: Dict[str, Any] = None  # Additional context
+    safety_level: str = "safe"  # "safe", "potentially_destructive", "destructive"
     confidence: float = 0.0  # Parser confidence (0-1)
     raw_command: str = ""  # Original voice text
 
@@ -84,22 +88,30 @@ class SemanticVoiceParser:
     def _create_semantic_prompt(self, voice_text: str) -> str:
         """Create structured prompt for semantic voice command understanding"""
 
-        prompt = f"""Parse this voice command into JSON format.
+        prompt = f"""Parse this voice command into JSON format. Understand the user's intent and extract all meaningful components.
 
 Command: "{voice_text}"
 
 Respond with only this JSON structure:
 {{
-  "intent_type": "open_app" or "search_web" or "unknown",
-  "primary_action": "main verb",
+  "intent_type": "open_app" or "search_web" or "create_note" or "edit_note" or "multi_step" or "system_command" or "unknown",
+  "primary_action": "main verb like open, search, create, edit, delete, etc",
   "target_app": "app name if any",
   "search_query": "search terms if any",
+  "note_content": "text content for notes",
+  "note_title": "title for new notes",
+  "steps": ["array of sequential actions for multi-step commands"],
+  "parameters": {{"additional context like file paths, URLs, etc"}},
+  "safety_level": "safe" or "potentially_destructive" or "destructive",
   "confidence": 0.9
 }}
 
 Examples:
-"Open Chrome" → {{"intent_type": "open_app", "primary_action": "open", "target_app": "chrome", "confidence": 0.9}}
-"Search Python" → {{"intent_type": "search_web", "primary_action": "search", "search_query": "Python", "confidence": 0.9}}
+"Open Chrome" → {{"intent_type": "open_app", "primary_action": "open", "target_app": "chrome", "confidence": 0.9, "safety_level": "safe"}}
+"Search Python tutorials" → {{"intent_type": "search_web", "primary_action": "search", "search_query": "Python tutorials", "confidence": 0.9, "safety_level": "safe"}}
+"Create a note about today's meeting" → {{"intent_type": "create_note", "primary_action": "create", "target_app": "notes", "note_title": "Today's Meeting", "confidence": 0.9, "safety_level": "safe"}}
+"Open TextEdit and write hello world" → {{"intent_type": "multi_step", "steps": ["open textedit", "write hello world"], "confidence": 0.9, "safety_level": "safe"}}
+"Delete all my files" → {{"intent_type": "system_command", "primary_action": "delete", "safety_level": "destructive", "confidence": 0.8}}
 
 JSON only:"""
 
@@ -215,7 +227,11 @@ JSON only:"""
                         primary_action=llm_result.get('primary_action', 'unknown'),
                         target_app=llm_result.get('target_app'),
                         search_query=llm_result.get('search_query'),
+                        note_content=llm_result.get('note_content'),
+                        note_title=llm_result.get('note_title'),
+                        steps=llm_result.get('steps'),
                         parameters=llm_result.get('parameters', {}),
+                        safety_level=llm_result.get('safety_level', 'safe'),
                         confidence=float(llm_result.get('confidence', 0.0)),
                         raw_command=voice_text
                     )
