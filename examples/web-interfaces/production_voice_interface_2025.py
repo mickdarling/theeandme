@@ -690,8 +690,16 @@ def start_listening():
 
 @socketio.on('stop_listening')
 def stop_listening():
-    global always_listening_active
+    global always_listening_active, recorder
     always_listening_active = False
+
+    # Clean shutdown of recorder
+    if recorder:
+        try:
+            recorder.shutdown()
+        except:
+            pass
+        recorder = None
 
     emit('status_update', {
         'status': 'idle',
@@ -699,6 +707,36 @@ def stop_listening():
     })
 
     print("🛑 Always Listening stopped")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection - CRITICAL for proper cleanup"""
+    global always_listening_active, recorder
+
+    print("🔌 Client disconnected - cleaning up voice interface")
+
+    # Stop all voice processing
+    always_listening_active = False
+
+    # Clean shutdown of recorder
+    if recorder:
+        try:
+            recorder.shutdown()
+        except Exception as e:
+            print(f"⚠️  Error shutting down recorder: {e}")
+        recorder = None
+
+    print("✅ Voice interface cleanup complete")
+
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    print("🔌 Client connected to voice interface")
+
+    emit('status_update', {
+        'status': 'idle',
+        'message': 'Connected - Ready to listen'
+    })
 
 def main():
     global echo_blocker, voice_automation, voice_calibration, session_dir
@@ -722,7 +760,8 @@ def main():
     print(f"🧠 Enhanced Echo Blocker initialized")
     print(f"🎵 Voice Fingerprinting: {'ENABLED' if echo_blocker.enable_voice_fingerprinting else 'DISABLED'}")
     print(f"🚀 Voice Intent Automation initialized")
-    print(f"🎯 Available commands: open [app], search for [query], go to [browser] and search for [query]")
+    print(f"🦙 Semantic Understanding: {'ENABLED (Ollama)' if voice_automation.automation_stats['semantic_parser_available'] else 'DISABLED (Regex fallback)'}")
+    print(f"🎯 Natural language commands: 'Open a Chrome browser', 'Search for Python tutorials', etc.")
 
     # Start server
     print(f"\n🌐 Starting Production Voice Interface...")

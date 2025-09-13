@@ -13,45 +13,22 @@ import os
 import time
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+from semantic_voice_parser import SemanticVoiceParser
 
 
 class VoiceIntentAutomation:
     """Intent recognition and macOS app automation for voice commands"""
 
     def __init__(self):
+        # Initialize semantic parser for intelligent command understanding
+        self.semantic_parser = SemanticVoiceParser()
+
         self.automation_stats = {
             'total_commands': 0,
             'successful_automations': 0,
             'failed_automations': 0,
-            'commands_by_type': {}
-        }
-
-        # Command patterns for intent recognition
-        self.intent_patterns = {
-            'open_app': [
-                r'open\s+(?:up\s+)?(\w+)',  # Fixed: "open up Chrome" → captures "Chrome"
-                r'launch\s+(?:up\s+)?(\w+)',
-                r'start\s+(?:up\s+)?(\w+)',
-                r'run\s+(?:up\s+)?(\w+)',
-                r'open\s+the\s+(\w+)\s+(?:app|application)?',  # "open the notes app"
-                r'launch\s+the\s+(\w+)\s+(?:app|application)?'
-            ],
-            'search_web': [
-                r'search\s+(?:for\s+)?(.+)',  # "search for X" or "search X"
-                r'google\s+(.+)',
-                r'look\s+up\s+(.+)',
-                r'find\s+(.+)(?:\s+online)?',  # "find X" or "find X online"
-                r'search\s+(?:on\s+)?(.+)'  # "search on Google for X"
-            ],
-            'browser_navigate': [
-                r'go\s+to\s+(\w+)\s+and\s+search\s+for\s+(.+)',
-                r'open\s+(\w+)\s+and\s+find\s+(.+)'
-            ],
-            'claude_code': [
-                r'ask\s+claude\s+code\s+about\s+(.+)',
-                r'claude\s+code\s+(.+)',
-                r'help\s+with\s+(.+)\s+in\s+claude'
-            ]
+            'commands_by_type': {},
+            'semantic_parser_available': self.semantic_parser.is_available
         }
 
         # App name mappings for macOS
@@ -68,26 +45,34 @@ class VoiceIntentAutomation:
         }
 
     def parse_intent(self, voice_text: str) -> Dict:
-        """Parse voice text to determine intent and extract parameters"""
-        voice_text = voice_text.lower().strip()
+        """Parse voice text using semantic understanding (Ollama LLM) with regex fallback"""
+        # Use semantic parser for intelligent understanding
+        intent = self.semantic_parser.parse_voice_command(voice_text)
 
-        for intent_type, patterns in self.intent_patterns.items():
-            for pattern in patterns:
-                match = re.search(pattern, voice_text, re.IGNORECASE)
-                if match:
-                    return {
-                        'intent': intent_type,
-                        'raw_text': voice_text,
-                        'matches': match.groups(),
-                        'confidence': 1.0  # Simple implementation for now
-                    }
-
-        return {
-            'intent': 'unknown',
+        # Convert semantic parser result to our expected format
+        result = {
+            'intent': intent.intent_type,
             'raw_text': voice_text,
-            'matches': [],
-            'confidence': 0.0
+            'confidence': intent.confidence,
+            'target_app': intent.target_app,
+            'search_query': intent.search_query,
+            'primary_action': intent.primary_action,
+            'parameters': intent.parameters or {}
         }
+
+        # Add specific matches based on intent type for backward compatibility
+        if intent.intent_type == 'open_app' and intent.target_app:
+            result['matches'] = [intent.target_app]
+        elif intent.intent_type == 'search_web' and intent.search_query:
+            result['matches'] = [intent.search_query]
+        elif intent.intent_type == 'browser_navigate':
+            # For complex commands like "open Chrome and search for X"
+            if intent.target_app and intent.search_query:
+                result['matches'] = [intent.target_app, intent.search_query]
+        else:
+            result['matches'] = []
+
+        return result
 
     def execute_open_app(self, app_name: str) -> Tuple[bool, str]:
         """Execute app opening command via osascript"""
