@@ -580,11 +580,22 @@ def handle_always_listening():
                 'message': '🔄 Always listening - Speak anytime!'
             })
             
-            # Continuous monitoring
+            # Continuous monitoring with rolling buffer
             chunk_duration = 0.5  # 500ms chunks
             sample_rate = 16000
             device_id = 2
             chunk_frames = int(chunk_duration * sample_rate)
+            
+            # Rolling buffer to capture complete speech segments
+            buffer_duration = 10.0  # Keep 10 seconds of audio history
+            buffer_size = int(buffer_duration * sample_rate)
+            audio_buffer = np.zeros(buffer_size, dtype=np.float32)
+            buffer_index = 0
+            
+            speech_detected = False
+            speech_start_time = 0
+            silence_frames = 0
+            max_silence_frames = int(2.0 / chunk_duration)  # 2 seconds of silence to end recording
             
             while always_listening_active:
                 try:
@@ -599,47 +610,94 @@ def handle_always_listening():
                         time.sleep(0.5)
                         continue
                     
-                    # Record small chunk
+                    # Record small chunk and add to rolling buffer
                     audio_chunk = sd.rec(chunk_frames, samplerate=sample_rate, channels=1, dtype=np.float32, device=device_id)
                     sd.wait()
                     
                     audio_array = audio_chunk.flatten()
                     
-                    # NEW: Volume gating - ignore very quiet audio (likely echo)
+                    # Add to rolling buffer
+                    end_index = buffer_index + len(audio_array)
+                    if end_index <= buffer_size:
+                        audio_buffer[buffer_index:end_index] = audio_array
+                    else:
+                        # Wrap around buffer
+                        first_part = buffer_size - buffer_index
+                        audio_buffer[buffer_index:] = audio_array[:first_part]
+                        audio_buffer[:end_index - buffer_size] = audio_array[first_part:]
+                    buffer_index = end_index % buffer_size
+                    
+                    # Volume gating - ignore very quiet audio (likely echo)
                     rms_level = np.sqrt(np.mean(audio_array ** 2))
-                    if rms_level < 0.005:  # Ignore very quiet audio
+                    if rms_level < 0.005:
+                        if speech_detected:
+                            silence_frames += 1
                         continue
                     
                     # Check for voice activity
                     vad_result = vad.detect_voice_activity(audio_array)
                     
                     if vad_result.has_voice and vad_result.confidence > 0.8:
-                        # Voice detected! Record longer segment
-                        socketio.emit('voice_detected', {
-                            'confidence': int(vad_result.confidence * 100),
-                            'timestamp': datetime.now().strftime("%H:%M:%S")
-                        })
-                        
-                        socketio.emit('status_update', {
-                            'status': 'listening',
-                            'message': '🔴 Voice detected - Recording...'
-                        })
-                        
-                        # Record 3 seconds for transcription
-                        full_audio = sd.rec(int(3 * sample_rate), samplerate=sample_rate, channels=1, dtype=np.float32, device=device_id)
-                        sd.wait()
-                        
-                        # Process the audio
-                        process_detected_speech(full_audio.flatten())
-                        
-                        # Brief pause before resuming monitoring
-                        time.sleep(1)
-                        
-                        if always_listening_active:
+                        if not speech_detected:
+                            # Start of speech detected!
+                            speech_detected = True
+                            speech_start_time = time.time()
+                            silence_frames = 0
+                            
+                            socketio.emit('voice_detected', {
+                                'confidence': int(vad_result.confidence * 100),
+                                'timestamp': datetime.now().strftime("%H:%M:%S")
+                            })
+                            
                             socketio.emit('status_update', {
                                 'status': 'listening',
-                                'message': '🔄 Always listening - Speak anytime!'
+                                'message': '🔴 Speech started - Buffering...'
                             })
+                        else:
+                            # Continue speech - reset silence counter
+                            silence_frames = 0
+                    else:
+                        if speech_detected:
+                            silence_frames += 1
+                            
+                            # Check if we've had enough silence to end speech
+                            if silence_frames >= max_silence_frames:
+                                # End of speech detected! Process the buffered audio
+                                speech_duration = time.time() - speech_start_time + 2.0  # Add buffer
+                                speech_samples = int(speech_duration * sample_rate)
+                                speech_samples = min(speech_samples, buffer_size)  # Don't exceed buffer
+                                
+                                # Extract speech from buffer (working backwards from current position)
+                                if speech_samples <= buffer_index:
+                                    speech_audio = audio_buffer[buffer_index - speech_samples:buffer_index].copy()
+                                else:
+                                    # Wrap around buffer
+                                    wrap_samples = speech_samples - buffer_index
+                                    speech_audio = np.concatenate([
+                                        audio_buffer[buffer_size - wrap_samples:],
+                                        audio_buffer[:buffer_index]
+                                    ])
+                                
+                                socketio.emit('status_update', {
+                                    'status': 'processing',
+                                    'message': f'📝 Processing complete speech ({speech_duration:.1f}s)...'
+                                })
+                                
+                                # Process the complete speech segment
+                                process_detected_speech(speech_audio)
+                                
+                                # Reset speech detection
+                                speech_detected = False
+                                silence_frames = 0
+                                
+                                # Brief pause before resuming monitoring
+                                time.sleep(1)
+                                
+                                if always_listening_active:
+                                    socketio.emit('status_update', {
+                                        'status': 'listening',
+                                        'message': '🔄 Always listening - Speak anytime!'
+                                    })
                     
                 except Exception as e:
                     if always_listening_active:  # Only log if we're still supposed to be listening
