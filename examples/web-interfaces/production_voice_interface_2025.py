@@ -34,6 +34,7 @@ from RealtimeSTT import AudioToTextRecorder
 
 # Import our breakthrough components
 from enhanced_echo_blocker_with_voice_fingerprinting import EnhancedEchoBlocker
+from voice_intent_automation import VoiceIntentAutomation
 
 # Flask app setup
 app = Flask(__name__)
@@ -43,6 +44,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 # Global components
 recorder = None
 echo_blocker = None
+voice_automation = None
 always_listening_active = False
 session_dir = None
 
@@ -346,6 +348,13 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
+            <div class="automation-panel">
+                <h3>🚀 App Automation</h3>
+                <div id="automationCommands" class="layer inactive">Commands: 0</div>
+                <div id="automationSuccess" class="layer inactive">Success Rate: 0%</div>
+                <div id="lastAutomation" class="layer inactive">Last Action: None</div>
+            </div>
+
             <div style="margin-top: 20px; font-size: 12px; opacity: 0.7;">
                 <h4>🎯 Breakthrough Features:</h4>
                 <ul style="margin: 5px 0; padding-left: 20px;">
@@ -497,6 +506,24 @@ HTML_TEMPLATE = '''
                 statusDiv.className = 'status idle';
             }
         });
+
+        socket.on('automation_executed', function(data) {
+            const result = data.automation_result;
+            const statusClass = result.success ? 'active' : 'error';
+
+            // Update last automation
+            const lastAutomation = document.getElementById('lastAutomation');
+            lastAutomation.textContent = `Last Action: ${result.intent.intent} - ${result.success ? 'Success' : 'Failed'}`;
+            lastAutomation.className = `layer ${statusClass}`;
+
+            // Add to conversation
+            addMessage(data.text, 'user', data.timestamp);
+            if (result.success) {
+                addMessage(`✅ ${result.message}`, 'system', data.timestamp);
+            } else {
+                addMessage(`❌ ${result.message}`, 'system', data.timestamp);
+            }
+        });
     </script>
 </body>
 </html>
@@ -552,8 +579,26 @@ def text_detected(text):
             'timestamp': timestamp
         })
 
-        # Generate AI response
-        ai_response = get_ai_response(text)
+        # BREAKTHROUGH: Check for automation commands first
+        automation_result = voice_automation.execute_voice_command(text)
+
+        if automation_result['automation_performed']:
+            # This was an automation command - emit automation result
+            socketio.emit('automation_executed', {
+                'text': text,
+                'automation_result': automation_result,
+                'timestamp': timestamp
+            })
+
+            # Still provide AI feedback about the automation
+            if automation_result['success']:
+                ai_response = f"Successfully executed: {automation_result['message']}"
+            else:
+                ai_response = f"Automation failed: {automation_result['message']}"
+        else:
+            # Regular conversation - generate normal AI response
+            ai_response = get_ai_response(text)
+
         performance_metrics['ai_responses'] += 1
 
         # Record AI voice for future echo detection
@@ -649,30 +694,34 @@ def stop_listening():
     print("🛑 Always Listening stopped")
 
 def main():
-    global echo_blocker, session_dir
+    global echo_blocker, voice_automation, session_dir
 
-    print("🚀 Production Voice Interface 2025 - BREAKTHROUGH IMPLEMENTATION")
+    print("🚀 Production Voice Interface 2025 - BREAKTHROUGH IMPLEMENTATION WITH APP AUTOMATION")
     print("=" * 80)
     print("✅ RealtimeSTT Perfect Sentence Capture")
     print("✅ Triple-Layer Echo Blocking")
     print("✅ Spectral Voice Analysis")
     print("✅ Zero AI Voice Loop Prevention")
+    print("✅ Voice Intent Automation (NEW)")
     print("=" * 80)
 
     # Setup components
     session_dir = setup_session_directory()
     echo_blocker = EnhancedEchoBlocker(enable_voice_fingerprinting=True)
+    voice_automation = VoiceIntentAutomation()
 
     print(f"🧠 Enhanced Echo Blocker initialized")
     print(f"🎵 Voice Fingerprinting: {'ENABLED' if echo_blocker.enable_voice_fingerprinting else 'DISABLED'}")
+    print(f"🚀 Voice Intent Automation initialized")
+    print(f"🎯 Available commands: open [app], search for [query], go to [browser] and search for [query]")
 
     # Start server
     print(f"\n🌐 Starting Production Voice Interface...")
-    print(f"🔗 Access at: http://localhost:8085")
+    print(f"🔗 Access at: http://localhost:8086")
     print(f"📁 Session files: {session_dir}")
 
     try:
-        socketio.run(app, host='0.0.0.0', port=8085, debug=False, allow_unsafe_werkzeug=True)
+        socketio.run(app, host='0.0.0.0', port=8086, debug=False, allow_unsafe_werkzeug=True)
     except KeyboardInterrupt:
         print("\n🛑 Shutting down Production Voice Interface 2025")
 
