@@ -28,6 +28,8 @@ class FastVoiceResponse:
     search_query: Optional[str] = None
     url: Optional[str] = None  # NEW: URL navigation support
     browser: Optional[str] = None  # NEW: Browser specification
+    filename: Optional[str] = None  # NEW: Document filename support
+    content: Optional[str] = None   # NEW: Document content support
     action_successful: bool = False
     processing_time_ms: float = 0.0
     method_used: str = "pattern"  # "pattern" or "llm"
@@ -121,6 +123,32 @@ class UltraFastVoiceAutomation:
                 'responses': ["Opening {browser} and navigating to {url}!"],
                 'intent': 'open_browser_url',
                 'extract_browser_url': True
+            },
+
+            # Document creation commands - AUTONOMOUS FEATURE ADDITION (Most specific first)
+            'create_document_named': {
+                'patterns': [r'\b(create|make|new)\s+(?:a\s+|an\s+)?(?:document|file|text file|doc)\s+(?:called|named|titled)\s+(.+)'],
+                'responses': ["Creating document '{filename}' for you!"],
+                'intent': 'create_document_named',
+                'extract_filename': True
+            },
+            'write_document': {
+                'patterns': [r'\b(write|create|draft)\s+(?:a\s+|an\s+)?(?:letter|email|report|essay|document)\s+(.+)'],
+                'responses': ["Starting document: {content}"],
+                'intent': 'create_document_content',
+                'extract_content': True
+            },
+            'create_note': {
+                'patterns': [r'\b(create|make|new|write)\s+(a\s+|an\s+)?(note|reminder)\b'],
+                'responses': ["Creating a new note!"],
+                'intent': 'create_document',
+                'app': 'notes'
+            },
+            'create_document': {
+                'patterns': [r'\b(create|make|new)\s+(a\s+|an\s+)?(document|file|text file|doc)\b'],
+                'responses': ["Creating a new document for you!"],
+                'intent': 'create_document',
+                'app': 'textedit'
             }
         }
 
@@ -138,6 +166,10 @@ class UltraFastVoiceAutomation:
                 intent_type=pattern_result['intent'],
                 target_app=pattern_result.get('app'),
                 search_query=pattern_result.get('query'),
+                url=pattern_result.get('url'),
+                browser=pattern_result.get('browser'),
+                filename=pattern_result.get('filename'),
+                content=pattern_result.get('content'),
                 processing_time_ms=(time.time() - start_time) * 1000,
                 method_used="pattern",
                 confidence=0.9
@@ -199,6 +231,18 @@ class UltraFastVoiceAutomation:
                         result['browser'] = browser
                         result['url'] = url
                         result['response'] = result['response'].format(browser=browser, url=url)
+
+                    # Extract filename for document creation - AUTONOMOUS FEATURE
+                    elif config.get('extract_filename') and len(match.groups()) >= 2:
+                        filename = match.group(2).strip()  # Second group is filename
+                        result['filename'] = filename
+                        result['response'] = result['response'].format(filename=filename)
+
+                    # Extract content for document creation - AUTONOMOUS FEATURE
+                    elif config.get('extract_content') and len(match.groups()) >= 2:
+                        content = match.group(2).strip()  # Second group is content
+                        result['content'] = content
+                        result['response'] = result['response'].format(content=content)
 
                     # Set specific app if defined
                     elif 'app' in config:
@@ -381,6 +425,97 @@ class UltraFastVoiceAutomation:
                     time.sleep(1)  # Give browser time to open
                     return self._navigate_to_url(response.browser, response.url)
                 return False
+
+            # NEW AUTONOMOUS FEATURE: Document Creation
+            elif response.intent_type in ["create_document", "create_document_named", "create_document_content"]:
+                return self._create_document(response)
+
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+
+        return False
+
+    def _create_document(self, response: FastVoiceResponse) -> bool:
+        """Create document with specified content and filename"""
+        try:
+            # Determine filename
+            filename = None
+            if hasattr(response, 'filename'):
+                filename = response.filename
+                # Add .txt extension if no extension provided
+                if '.' not in filename:
+                    filename += '.txt'
+
+            # Determine content
+            content = ""
+            if hasattr(response, 'content') and response.content:
+                content = response.content
+            elif response.intent_type == "create_document_content":
+                content = f"Document created via voice command\n\n{getattr(response, 'content', 'Add your content here...')}"
+            else:
+                content = "Document created via voice command\n\nAdd your content here..."
+
+            # Create document based on app type
+            if response.target_app == 'notes':
+                # Use Notes app
+                return self._create_notes_document(content)
+            else:
+                # Use TextEdit for general documents
+                return self._create_textedit_document(content, filename)
+
+        except Exception as e:
+            print(f"❌ Document creation failed: {e}")
+            return False
+
+    def _create_notes_document(self, content: str) -> bool:
+        """Create a new note in Notes app"""
+        try:
+            # Open Notes app
+            subprocess.run(['open', '-a', 'Notes'], check=True, timeout=5)
+            time.sleep(1)  # Give Notes time to open
+
+            # Use AppleScript to create new note with content
+            applescript = f'''
+            tell application "Notes"
+                activate
+                make new note at folder "Notes" of account "On My Mac" with properties {{body:"{content}"}}
+            end tell
+            '''
+
+            subprocess.run(['osascript', '-e', applescript], check=True, timeout=10)
+            return True
+
+        except Exception as e:
+            print(f"❌ Notes creation failed: {e}")
+            return False
+
+    def _create_textedit_document(self, content: str, filename: str = None) -> bool:
+        """Create a new document in TextEdit"""
+        try:
+            # Create temporary file path
+            import tempfile
+            import os
+
+            if filename:
+                # Create in Documents folder if filename provided
+                docs_path = os.path.expanduser("~/Documents")
+                file_path = os.path.join(docs_path, filename)
+            else:
+                # Create temporary file
+                fd, file_path = tempfile.mkstemp(suffix='.txt', prefix='Voice_Document_')
+                os.close(fd)  # Close the file descriptor
+
+            # Write content to file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            # Open the file in TextEdit
+            subprocess.run(['open', '-a', 'TextEdit', file_path], check=True, timeout=5)
+            return True
+
+        except Exception as e:
+            print(f"❌ TextEdit document creation failed: {e}")
+            return False
 
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             pass

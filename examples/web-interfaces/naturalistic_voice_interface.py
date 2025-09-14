@@ -419,6 +419,15 @@ def start_naturalistic_listening():
     """Start pure LLM voice processing"""
     global always_listening_active, recorder, echo_blocker, semantic_parser, voice_calibration
 
+    # CRITICAL FIX: Prevent multiple listening sessions
+    if always_listening_active:
+        print("⚠️  Already listening - ignoring duplicate start request")
+        emit('status_update', {
+            'status': 'listening',
+            'message': 'Already Listening - Naturalistic Mode Active 🧠'
+        })
+        return
+
     print("🧠 Starting Naturalistic Voice Processing...")
 
     # Initialize echo blocker
@@ -432,6 +441,20 @@ def start_naturalistic_listening():
     # Initialize voice calibration
     voice_calibration = VoiceCalibrationManager()
     print("🎵 Voice Calibration: ENABLED")
+
+    # Initialize recorder only if it doesn't exist
+    if recorder is None:
+        print("🎤 Initializing RealtimeSTT with calibrated settings...")
+
+        # Load saved calibration settings
+        config = voice_calibration.get_recorder_config()
+        print(f"📊 Using calibrated settings from previous sessions")
+
+        recorder = AudioToTextRecorder(
+            on_realtime_transcription_update=lambda x: None,
+            on_realtime_transcription_stabilized=lambda x: None,
+            **config  # Use all saved calibration settings
+        )
 
     always_listening_active = True
 
@@ -518,36 +541,33 @@ def start_naturalistic_listening():
                 'execution_success': False
             })
 
-    # Start RealtimeSTT
-    print("🎤 Initializing RealtimeSTT with calibrated settings...")
+    print("🎯 Starting Naturalistic Listening Loop...")
 
-    try:
-        recorder = AudioToTextRecorder(
-            model="base.en",
-            language="en",
-            spinner=False,
-            use_microphone=True,
-            level=20,
-            sample_rate=16000,
-            channels=1,
-            chunk_size=1024,
-            compute_type="default"
-        )
+    emit('status_update', {
+        'status': 'listening',
+        'message': 'Naturalistic Listening Active - Pure LLM Processing'
+    })
 
-        recorder.start(process_voice_command)
-        print("🎯 Naturalistic Voice Processing Active")
+    # Start continuous listening loop in background thread
+    def listen_continuously():
+        global always_listening_active
+        while always_listening_active:
+            try:
+                # CRITICAL FIX: Use recorder.text() correctly
+                text = recorder.text()
+                if text and text.strip():
+                    process_voice_command(text.strip())
+                else:
+                    time.sleep(0.1)  # Brief pause if no text
+            except Exception as e:
+                print(f"❌ Recording error: {e}")
+                socketio.emit('status_update', {
+                    'status': 'error',
+                    'message': f'Recording Error: {e}'
+                })
+                break
 
-        emit('status_update', {
-            'status': 'listening',
-            'message': 'Naturalistic Listening Active - Pure LLM Processing'
-        })
-
-    except Exception as e:
-        print(f"⚠️  RealtimeSTT initialization failed: {e}")
-        emit('status_update', {
-            'status': 'error',
-            'message': f'Audio initialization failed: {e}'
-        })
+    threading.Thread(target=listen_continuously, daemon=True).start()
 
 @socketio.on('stop_naturalistic_listening')
 def stop_naturalistic_listening():
