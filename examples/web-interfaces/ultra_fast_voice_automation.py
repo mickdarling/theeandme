@@ -26,6 +26,8 @@ class FastVoiceResponse:
     intent_type: str
     target_app: Optional[str] = None
     search_query: Optional[str] = None
+    url: Optional[str] = None  # NEW: URL navigation support
+    browser: Optional[str] = None  # NEW: Browser specification
     action_successful: bool = False
     processing_time_ms: float = 0.0
     method_used: str = "pattern"  # "pattern" or "llm"
@@ -103,6 +105,22 @@ class UltraFastVoiceAutomation:
                 'responses': ["Searching for {query}!", "Looking that up for you!"],
                 'intent': 'search_web',
                 'extract_query': True
+            },
+
+            # URL navigation - NEW AUTONOMOUS FEATURE
+            'navigate_url': {
+                'patterns': [r'\b(go to|navigate to|visit)\s+([\w\.-]+\.[\w]+(?:\/\S*)?)\b'],
+                'responses': ["Navigating to {url}!"],
+                'intent': 'navigate_url',
+                'extract_url': True
+            },
+
+            # Browser + URL navigation - NEW AUTONOMOUS FEATURE
+            'open_browser_url': {
+                'patterns': [r'\b(open|launch)\s+(safari|chrome|google chrome)(?:\s+and)?\s+(?:go to|navigate to|visit)\s+([\w\.-]+\.[\w]+(?:\/\S*)?)\b'],
+                'responses': ["Opening {browser} and navigating to {url}!"],
+                'intent': 'open_browser_url',
+                'extract_browser_url': True
             }
         }
 
@@ -167,6 +185,20 @@ class UltraFastVoiceAutomation:
                         query = match.group(2).strip()  # Second group is the query
                         result['query'] = query
                         result['response'] = result['response'].format(query=query)
+
+                    # Extract URL if needed - NEW AUTONOMOUS FEATURE
+                    elif config.get('extract_url') and len(match.groups()) >= 2:
+                        url = match.group(2).strip()  # Second group is the URL
+                        result['url'] = url
+                        result['response'] = result['response'].format(url=url)
+
+                    # Extract browser + URL if needed - NEW AUTONOMOUS FEATURE
+                    elif config.get('extract_browser_url') and len(match.groups()) >= 3:
+                        browser = match.group(2).strip()  # Second group is browser
+                        url = match.group(3).strip()      # Third group is URL
+                        result['browser'] = browser
+                        result['url'] = url
+                        result['response'] = result['response'].format(browser=browser, url=url)
 
                     # Set specific app if defined
                     elif 'app' in config:
@@ -280,6 +312,48 @@ class UltraFastVoiceAutomation:
         dangerous = ['delete', 'destroy', 'format', 'shutdown', 'kill all', 'rm -rf']
         return not any(word in voice_text.lower() for word in dangerous)
 
+    def _navigate_to_url(self, browser: str, url: str) -> bool:
+        """Navigate to URL using AppleScript browser automation"""
+        try:
+            # Clean up URL - add https:// if needed
+            if not url.startswith(('http://', 'https://')):
+                if '.' in url and not url.startswith('www.'):
+                    url = f"https://{url}"
+                elif not url.startswith('www.'):
+                    url = f"https://www.{url}"
+
+            # Browser-specific AppleScript
+            if browser.lower() in ['safari']:
+                script = f'''
+                tell application "Safari"
+                    activate
+                    if (count of windows) = 0 then
+                        make new window
+                    end if
+                    set URL of current tab of front window to "{url}"
+                end tell
+                '''
+            elif browser.lower() in ['chrome', 'google chrome']:
+                script = f'''
+                tell application "Google Chrome"
+                    activate
+                    if (count of windows) = 0 then
+                        make new window
+                    end if
+                    set URL of active tab of front window to "{url}"
+                end tell
+                '''
+            else:
+                return False
+
+            result = subprocess.run(['osascript', '-e', script],
+                                  capture_output=True, text=True, timeout=10)
+            return result.returncode == 0
+
+        except Exception as e:
+            print(f"⚠️  URL navigation failed: {e}")
+            return False
+
     def _execute_command(self, response: FastVoiceResponse) -> bool:
         """Execute the parsed command"""
         try:
@@ -292,6 +366,21 @@ class UltraFastVoiceAutomation:
                 search_url = f"https://www.google.com/search?q={response.search_query.replace(' ', '+')}"
                 subprocess.run(['open', search_url], check=True, timeout=5)
                 return True
+
+            # NEW AUTONOMOUS FEATURE: URL Navigation
+            elif response.intent_type == "navigate_url" and hasattr(response, 'url'):
+                # Use default browser for URL navigation
+                return self._navigate_to_url('safari', response.url)
+
+            # NEW AUTONOMOUS FEATURE: Browser + URL Navigation
+            elif response.intent_type == "open_browser_url" and hasattr(response, 'browser') and hasattr(response, 'url'):
+                # Open specific browser and navigate to URL
+                browser_success = subprocess.run(['open', '-a', self._get_app_name(response.browser)],
+                                               capture_output=True, timeout=5).returncode == 0
+                if browser_success:
+                    time.sleep(1)  # Give browser time to open
+                    return self._navigate_to_url(response.browser, response.url)
+                return False
 
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             pass
