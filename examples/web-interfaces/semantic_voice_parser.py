@@ -99,10 +99,18 @@ class SemanticVoiceParser:
             print(f"⚠️  Ollama connection failed: {e}")
             return False
 
-    def _create_conversational_prompt(self, voice_text: str) -> str:
+    def _create_conversational_prompt(self, voice_text: str, conversation_context: str = "") -> str:
         """Create conversational prompt that responds naturally AND parses commands"""
 
-        prompt = f"""You are a voice assistant. The user said: "{voice_text}"
+        context_section = ""
+        if conversation_context and conversation_context.strip():
+            context_section = f"""
+Recent conversation context:
+{conversation_context}
+
+"""
+
+        prompt = f"""You are a voice assistant. {context_section}The user said: "{voice_text}"
 
 Respond with ONLY a JSON object in this exact format:
 
@@ -111,10 +119,11 @@ Respond with ONLY a JSON object in this exact format:
 Examples:
 "Open Chrome" → {{"response":"Opening Chrome for you!","intent_type":"open_app","target_app":"chrome","confidence":0.9}}
 "How are you?" → {{"response":"I'm doing great, thanks for asking!","intent_type":"chat","confidence":0.9}}
-"Tell me a joke" → {{"response":"Why don't scientists trust atoms? Because they make up everything!","intent_type":"chat","confidence":0.9}}
-"Search Python" → {{"response":"I'll search for Python information.","intent_type":"search_web","search_query":"Python","confidence":0.9}}
+"What is open source software?" → {{"response":"Open source software is software with source code that anyone can inspect, modify, and enhance. Popular examples include Linux, Python, and WordPress.","intent_type":"chat","confidence":0.9}}
+"Can you remember 77°F?" → {{"response":"I'll remember that the temperature is 77°F.","intent_type":"chat","confidence":0.9}}
+"What's the temperature?" → {{"response":"You mentioned it's 77°F.","intent_type":"chat","confidence":0.9}} (if 77°F was mentioned in context)
 
-Respond with ONLY the JSON object, no other text:"""
+Use conversation context to provide accurate, contextual responses. Respond with ONLY the JSON object, no other text:"""
 
         return prompt
 
@@ -220,7 +229,7 @@ Respond with ONLY the JSON object, no other text:"""
             raw_command=voice_text
         )
 
-    def parse_voice_command(self, voice_text: str) -> CommandIntent:
+    def parse_voice_command(self, voice_text: str, conversation_context: str = "") -> CommandIntent:
         """Main method to parse voice command into structured intent"""
 
         if not voice_text or not voice_text.strip():
@@ -233,7 +242,7 @@ Respond with ONLY the JSON object, no other text:"""
 
         # Try conversational LLM parsing first
         if self.is_available:
-            prompt = self._create_conversational_prompt(voice_text)
+            prompt = self._create_conversational_prompt(voice_text, conversation_context)
             llm_result = self._query_ollama(prompt)
 
             if llm_result:

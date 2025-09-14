@@ -106,7 +106,7 @@ class UltraFastVoiceAutomation:
             }
         }
 
-    def process_voice_command(self, voice_text: str, execute: bool = True) -> FastVoiceResponse:
+    def process_voice_command(self, voice_text: str, execute: bool = True, conversation_context: str = "") -> FastVoiceResponse:
         """Ultra-fast processing with pattern matching first"""
         start_time = time.time()
         self.stats["total_calls"] += 1
@@ -127,7 +127,7 @@ class UltraFastVoiceAutomation:
         else:
             # Step 2: Use LLM only for complex cases
             self.stats["llm_calls"] += 1
-            response = self._llm_fallback(voice_text, start_time)
+            response = self._llm_fallback(voice_text, start_time, conversation_context)
 
         # Step 3: Execute if safe and requested
         if execute and self._is_safe(voice_text) and response.intent_type not in ['chat', 'unknown']:
@@ -208,7 +208,7 @@ class UltraFastVoiceAutomation:
         # ARCHITECTURAL IMPROVEMENT: Use actual installed app whitelist
         return potential_app.lower() in self.installed_apps
 
-    def _llm_fallback(self, voice_text: str, start_time: float) -> FastVoiceResponse:
+    def _llm_fallback(self, voice_text: str, start_time: float, conversation_context: str = "") -> FastVoiceResponse:
         """Use LLM only when patterns fail - now with actual LLM integration"""
 
         # First try semantic understanding for common conversational patterns
@@ -232,7 +232,7 @@ class UltraFastVoiceAutomation:
 
             if self._semantic_parser.is_available:
                 # Use LLM for conversational response
-                llm_intent = self._semantic_parser.parse_voice_command(voice_text)
+                llm_intent = self._semantic_parser.parse_voice_command(voice_text, conversation_context)
 
                 # Extract conversational response from LLM
                 if hasattr(llm_intent, 'parameters') and llm_intent.parameters and 'response' in llm_intent.parameters:
