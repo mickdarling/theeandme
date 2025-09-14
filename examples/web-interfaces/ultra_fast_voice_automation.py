@@ -90,7 +90,7 @@ class UltraFastVoiceAutomation:
                 'responses': ["Opening {app} for you!"],
                 'intent': 'open_app',
                 'extract_app': True,
-                'context_blacklist': ['source', 'mind', 'heart', 'book', 'file', 'door', 'window', 'eyes', 'mouth', 'box', 'can', 'up', 'ai']
+                'context_blacklist': ['source', 'mind', 'heart', 'book', 'file', 'door', 'window', 'eyes', 'mouth', 'box', 'can', 'up', 'ai', 'houses', 'homes', 'properties', 'listings', 'market', 'realtor', 'estate']
             },
 
             # Search commands
@@ -187,7 +187,12 @@ class UltraFastVoiceAutomation:
             'open conversation',
             'open to',
             'open up',
-            'open with'
+            'open with',
+            'open houses',
+            'open homes',
+            'open house',
+            'open properties',
+            'open listings'
         ]
 
         full_lower = full_text.lower()
