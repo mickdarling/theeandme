@@ -9,6 +9,7 @@ like "Open a Chrome browser" or "Search for Python tutorials in Safari"
 
 import json
 import time
+import subprocess
 from typing import Dict, Optional, Any, List
 from dataclasses import dataclass
 import re
@@ -19,10 +20,12 @@ import urllib.parse
 @dataclass
 class CommandIntent:
     """Structured representation of parsed voice command intent"""
-    intent_type: str  # "open_app", "search_web", "create_note", "multi_step", etc.
-    primary_action: str  # "open", "search", "create", "edit", "delete", etc.
+    intent_type: str  # "open_app", "search_web", "navigate_url", "create_note", "chat", etc.
+    primary_action: str  # "open", "search", "navigate", "create", "edit", "delete", etc.
     target_app: Optional[str] = None  # "chrome", "safari", "notes", "textedit"
     search_query: Optional[str] = None  # "Python tutorials"
+    url: Optional[str] = None  # "hackernews.com", "github.com"
+    browser: Optional[str] = None  # "safari", "chrome" for URL navigation
     note_content: Optional[str] = None  # Text content for notes
     note_title: Optional[str] = None  # Title for new notes
     steps: Optional[List[str]] = None  # Multi-step command breakdown
@@ -110,20 +113,21 @@ Recent conversation context:
 
 """
 
-        prompt = f"""You are a voice assistant. {context_section}The user said: "{voice_text}"
+        prompt = f"""You are a naturalistic voice assistant for computer automation. {context_section}The user said: "{voice_text}"
 
 Respond with ONLY a JSON object in this exact format:
 
-{{"response": "natural conversational response", "intent_type": "open_app|search_web|create_note|chat|unknown", "target_app": "app_name or null", "search_query": "query or null", "confidence": 0.9}}
+{{"response": "natural conversational response", "intent_type": "open_app|search_web|navigate_url|create_note|chat|unknown", "target_app": "app_name or null", "search_query": "query or null", "url": "url or null", "browser": "browser or null", "note_content": "content or null", "confidence": 0.9}}
 
-Examples:
+NATURALISTIC EXAMPLES:
 "Open Chrome" → {{"response":"Opening Chrome for you!","intent_type":"open_app","target_app":"chrome","confidence":0.9}}
-"How are you?" → {{"response":"I'm doing great, thanks for asking!","intent_type":"chat","confidence":0.9}}
+"Go to hackernews.com" → {{"response":"Navigating to hackernews.com","intent_type":"navigate_url","url":"hackernews.com","browser":"safari","confidence":0.9}}
+"Open Safari and go to github.com" → {{"response":"Opening Safari and navigating to GitHub","intent_type":"navigate_url","url":"github.com","browser":"safari","confidence":0.9}}
+"Create a new note about today's meeting" → {{"response":"Creating a new note about today's meeting","intent_type":"create_note","target_app":"notes","note_content":"Today's meeting notes","confidence":0.9}}
+"Make a new document in VSCode" → {{"response":"Creating a new document in Visual Studio Code","intent_type":"create_note","target_app":"code","confidence":0.9}}
 "What is open source software?" → {{"response":"Open source software is software with source code that anyone can inspect, modify, and enhance. Popular examples include Linux, Python, and WordPress.","intent_type":"chat","confidence":0.9}}
-"Can you remember 77°F?" → {{"response":"I'll remember that the temperature is 77°F.","intent_type":"chat","confidence":0.9}}
-"What's the temperature?" → {{"response":"You mentioned it's 77°F.","intent_type":"chat","confidence":0.9}} (if 77°F was mentioned in context)
 
-Use conversation context to provide accurate, contextual responses. Respond with ONLY the JSON object, no other text:"""
+Handle ALL commands naturally - no pattern matching limitations. Respond with ONLY the JSON object, no other text:"""
 
         return prompt
 
@@ -252,6 +256,8 @@ Use conversation context to provide accurate, contextual responses. Respond with
                         primary_action=llm_result.get('intent_type', 'unknown'),  # Use intent_type as action for simplicity
                         target_app=llm_result.get('target_app'),
                         search_query=llm_result.get('search_query'),
+                        url=llm_result.get('url'),
+                        browser=llm_result.get('browser'),
                         note_content=llm_result.get('note_content'),
                         note_title=llm_result.get('note_title'),
                         parameters={'response': llm_result.get('response', '')},  # Store conversational response
@@ -320,7 +326,122 @@ def test_semantic_parser():
         print(f"  Parameters: {intent.parameters}")
         print(f"  Confidence: {intent.confidence:.2f}")
         print(f"  Parse Time: {(end_time - start_time)*1000:.1f}ms")
-        print()
+
+    def execute_command(self, intent: CommandIntent) -> bool:
+        """Execute the command identified by LLM - NATURALISTIC AUTOMATION"""
+        try:
+            if intent.intent_type == "open_app" and intent.target_app:
+                app_name = self._get_app_name(intent.target_app)
+                subprocess.run(['open', '-a', app_name], check=True, timeout=5)
+                return True
+
+            elif intent.intent_type == "search_web" and intent.search_query:
+                search_url = f"https://www.google.com/search?q={intent.search_query.replace(' ', '+')}"
+                subprocess.run(['open', search_url], check=True, timeout=5)
+                return True
+
+            elif intent.intent_type == "navigate_url" and intent.url:
+                browser = intent.browser or 'safari'  # Default to Safari
+                return self._navigate_to_url(browser, intent.url)
+
+            elif intent.intent_type == "create_note":
+                return self._create_document(intent.target_app, intent.note_content, intent.note_title)
+
+        except Exception as e:
+            print(f"⚠️  Command execution failed: {e}")
+            return False
+
+        return False
+
+    def _navigate_to_url(self, browser: str, url: str) -> bool:
+        """Navigate to URL using AppleScript browser automation"""
+        try:
+            # Clean up URL - add https:// if needed
+            if not url.startswith(('http://', 'https://')):
+                if '.' in url and not url.startswith('www.'):
+                    url = f"https://{url}"
+                elif not url.startswith('www.'):
+                    url = f"https://www.{url}"
+
+            # Browser-specific AppleScript
+            if browser.lower() in ['safari']:
+                script = f'''
+                tell application "Safari"
+                    activate
+                    if (count of windows) = 0 then
+                        make new window
+                    end if
+                    set URL of current tab of front window to "{url}"
+                end tell
+                '''
+            elif browser.lower() in ['chrome', 'google chrome']:
+                script = f'''
+                tell application "Google Chrome"
+                    activate
+                    if (count of windows) = 0 then
+                        make new window
+                    end if
+                    set URL of active tab of front window to "{url}"
+                end tell
+                '''
+            else:
+                return False
+
+            result = subprocess.run(['osascript', '-e', script],
+                                  capture_output=True, text=True, timeout=10)
+            return result.returncode == 0
+
+        except Exception as e:
+            print(f"⚠️  URL navigation failed: {e}")
+            return False
+
+    def _create_document(self, app: str, content: str = "", title: str = "") -> bool:
+        """Create new document using app-specific automation"""
+        try:
+            if app and app.lower() in ['notes']:
+                title = title or "Voice Note"
+                script = f'''
+                tell application "Notes"
+                    activate
+                    make new note with properties {{name:"{title}", body:"{content or 'New voice note'}"}}
+                end tell
+                '''
+                result = subprocess.run(['osascript', '-e', script],
+                                      capture_output=True, text=True, timeout=10)
+                return result.returncode == 0
+
+            elif app and app.lower() in ['code', 'vscode', 'visual studio code']:
+                subprocess.run(['code', '--new-file'], check=True, timeout=5)
+                return True
+
+            elif app and app.lower() in ['obsidian']:
+                # Use Obsidian URI scheme for new notes
+                note_name = title or "Voice Note"
+                subprocess.run(['open', f'obsidian://new?name={note_name}'], timeout=5)
+                return True
+
+        except Exception as e:
+            print(f"⚠️  Document creation failed: {e}")
+            return False
+
+        return False
+
+    def _get_app_name(self, app_name: str) -> str:
+        """Map common names to macOS app names"""
+        mappings = {
+            'chrome': 'Google Chrome',
+            'safari': 'Safari',
+            'firefox': 'Firefox',
+            'notes': 'Notes',
+            'textedit': 'TextEdit',
+            'terminal': 'Terminal',
+            'code': 'Visual Studio Code',
+            'vscode': 'Visual Studio Code',
+            'obsidian': 'Obsidian'
+        }
+        return mappings.get(app_name.lower(), app_name)
+
+print()
 
 
 if __name__ == "__main__":
