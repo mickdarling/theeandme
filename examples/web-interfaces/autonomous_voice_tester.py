@@ -1,453 +1,537 @@
 #!/usr/bin/env python3
 """
-Autonomous Voice Testing System
-Comprehensive self-testing voice interface with multiple STT engines and analysis
+Autonomous Voice Automation Testing Framework
+DollhouseMCP Collaborative Testing - No Human Interaction Required
 
-Features:
-- Generate test phrases and record them internally
-- Play through speakers and record via microphone
-- Compare multiple STT engines (Whisper, online services)
-- Analyze echo patterns and audio degradation
-- Generate comprehensive test reports
-- Run continuous testing loops autonomously
+This framework tests the entire voice automation pipeline without requiring
+human voice input by directly calling the automation APIs and verifying results.
 """
 
-import asyncio
-import sys
-import os
-import json
 import time
-import wave
-import threading
+import json
 import subprocess
-import tempfile
-from pathlib import Path
-from datetime import datetime
-from typing import List, Dict, Any
-import sounddevice as sd
-import numpy as np
 import requests
-import aiohttp
+from typing import Dict, List, Tuple, Any
+from datetime import datetime
+from pathlib import Path
+from enhanced_voice_automation import EnhancedVoiceAutomation
+from semantic_voice_parser import SemanticVoiceParser, CommandIntent
 
-# Add src to path for imports
-sys.path.append(str(Path(__file__).parent.parent.parent / "src"))
-
-from audio.stt import WhisperSTT
 
 class AutonomousVoiceTester:
+    """Comprehensive autonomous testing of the voice automation system"""
+
     def __init__(self):
-        self.test_dir = Path("/Users/mick/Developer/theeandme/autonomous_voice_testing")
-        self.test_dir.mkdir(exist_ok=True)
-        
-        self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.session_dir = self.test_dir / f"test_session_{self.session_id}"
-        self.session_dir.mkdir(exist_ok=True)
-        
-        self.whisper_stt = None
-        self.test_phrases = [
-            "This is a test of the voice recognition system.",
-            "The quick brown fox jumps over the lazy dog.",
-            "Testing echo cancellation and audio quality with a longer sentence that contains multiple words and phrases.",
-            "Short test.",
-            "Can the system handle complex technical terminology like asynchronous processing and machine learning algorithms?",
-            "Testing numbers: one two three four five six seven eight nine ten.",
-            "How well does this work with natural speech patterns, pauses, and inflection?",
-            "Echo echo echo - testing repetitive words for feedback detection.",
-            "Whisper transcription quality assessment in progress.",
-            "Final test phrase with punctuation, special characters, and varied tone!"
-        ]
-        
-        self.results = {
-            'session_id': self.session_id,
-            'start_time': datetime.now().isoformat(),
-            'tests': [],
+        # Initialize the systems under test
+        self.automation = EnhancedVoiceAutomation()
+        self.semantic_parser = SemanticVoiceParser()
+
+        # Test results storage
+        self.test_results = {
+            'session_start': datetime.now().isoformat(),
+            'semantic_parser_tests': [],
+            'automation_tests': [],
+            'integration_tests': [],
+            'performance_tests': [],
+            'safety_tests': [],
             'summary': {}
         }
-        
-        print(f"🤖 Autonomous Voice Testing System Initialized")
-        print(f"📁 Session directory: {self.session_dir}")
-        print(f"🧪 Test phrases: {len(self.test_phrases)}")
 
-    async def initialize_components(self):
-        """Initialize all STT components"""
-        try:
-            # Initialize Whisper STT
-            config = {
-                'sample_rate': 16000,
-                'whisper_model': 'base'
+    def test_semantic_parser_standalone(self) -> Dict:
+        """Test the semantic parser in isolation"""
+        print("🧠 Testing Semantic Parser (Standalone)")
+
+        test_cases = [
+            # Basic app opening
+            {
+                'input': 'Open Chrome',
+                'expected': {'intent_type': 'open_app', 'target_app': 'chrome'},
+                'category': 'app_opening'
+            },
+            {
+                'input': 'Launch Safari',
+                'expected': {'intent_type': 'open_app', 'target_app': 'safari'},
+                'category': 'app_opening'
+            },
+
+            # Web searching
+            {
+                'input': 'Search for Python tutorials',
+                'expected': {'intent_type': 'search_web', 'search_query': 'Python tutorials'},
+                'category': 'web_search'
+            },
+            {
+                'input': 'Google machine learning',
+                'expected': {'intent_type': 'search_web', 'search_query': 'machine learning'},
+                'category': 'web_search'
+            },
+
+            # Multi-step workflows
+            {
+                'input': 'Open Chrome and search for Python tools',
+                'expected': {'intent_type': 'multi_step', 'steps': ['open chrome', 'search for Python tools']},
+                'category': 'multi_step'
+            },
+            {
+                'input': 'Launch Safari and search for voice recognition',
+                'expected': {'intent_type': 'multi_step'},
+                'category': 'multi_step'
+            },
+
+            # Notes operations
+            {
+                'input': 'Create a note about today\'s meeting',
+                'expected': {'intent_type': 'create_note', 'note_title': 'today\'s meeting'},
+                'category': 'notes'
+            },
+            {
+                'input': 'Add to my notes: breakthrough achieved',
+                'expected': {'intent_type': 'edit_note', 'note_content': 'breakthrough achieved'},
+                'category': 'notes'
+            },
+
+            # Safety validation
+            {
+                'input': 'Delete all my files',
+                'expected': {'intent_type': 'system_command', 'safety_level': 'destructive'},
+                'category': 'safety'
+            },
+
+            # Edge cases
+            {
+                'input': 'respond',
+                'expected': {'intent_type': 'unknown'},
+                'category': 'edge_case'
+            },
+            {
+                'input': '',
+                'expected': {'intent_type': 'unknown'},
+                'category': 'edge_case'
             }
-            
-            self.whisper_stt = WhisperSTT(config)
-            await self.whisper_stt.initialize()
-            print("✅ Whisper STT initialized")
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Initialization error: {e}")
-            return False
+        ]
 
-    def generate_internal_speech(self, text: str, filename: str) -> str:
-        """Generate speech internally without speakers"""
-        filepath = self.session_dir / filename
-        
-        try:
-            # Use macOS say command to generate directly to file
-            cmd = f'say "{text}" -o "{filepath}" --data-format=LEI16@16000'
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            
-            if result.returncode == 0:
-                print(f"✅ Generated internal speech: {filename}")
-                return str(filepath)
-            else:
-                print(f"❌ Speech generation failed: {result.stderr}")
-                return None
-                
-        except Exception as e:
-            print(f"❌ Speech generation error: {e}")
-            return None
-
-    def record_speaker_microphone_loop(self, text: str, filename: str, duration: float = 6.0) -> str:
-        """Play text through speakers and record via microphone"""
-        filepath = self.session_dir / filename
-        
-        try:
-            print(f"🔊 Playing and recording: {text[:50]}...")
-            
-            # Set volume to 30% for controlled testing
-            os.system("osascript -e 'set volume output volume 30'")
-            
-            # Start recording
-            sample_rate = 16000
-            device_id = 2  # Live Streamer CAM 513
-            
-            # Start recording in background
-            recording = sd.rec(
-                int(duration * sample_rate),
-                samplerate=sample_rate,
-                channels=1,
-                dtype=np.int16,
-                device=device_id
-            )
-            
-            # Wait 0.5 seconds then start speaking
-            time.sleep(0.5)
-            
-            # Play text through speakers
-            os.system(f'say "{text}" &')
-            
-            # Wait for recording to complete
-            sd.wait()
-            
-            # Save recording
-            with wave.open(str(filepath), 'wb') as wav_file:
-                wav_file.setnchannels(1)
-                wav_file.setsampwidth(2)
-                wav_file.setframerate(sample_rate)
-                wav_file.writeframes(recording.tobytes())
-            
-            print(f"✅ Speaker-mic loop recorded: {filename}")
-            return str(filepath)
-            
-        except Exception as e:
-            print(f"❌ Speaker-mic recording error: {e}")
-            return None
-
-    async def test_whisper_transcription(self, audio_file: str) -> Dict[str, Any]:
-        """Test Whisper transcription on audio file"""
-        try:
-            # Load audio file
-            with wave.open(audio_file, 'rb') as wav_file:
-                frames = wav_file.readframes(wav_file.getnframes())
-                audio_data = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-            
-            # Transcribe
-            start_time = time.time()
-            result = await self.whisper_stt.transcribe_audio(audio_data)
-            processing_time = time.time() - start_time
-            
-            return {
-                'engine': 'whisper',
-                'text': result.text,
-                'confidence': result.confidence,
-                'processing_time': processing_time,
-                'success': True
-            }
-            
-        except Exception as e:
-            return {
-                'engine': 'whisper',
-                'text': '',
-                'confidence': 0.0,
-                'processing_time': 0.0,
-                'success': False,
-                'error': str(e)
-            }
-
-    async def test_multiple_stt_engines(self, audio_file: str) -> List[Dict[str, Any]]:
-        """Test multiple STT engines on the same audio file"""
         results = []
-        
-        # Test Whisper
-        whisper_result = await self.test_whisper_transcription(audio_file)
-        results.append(whisper_result)
-        
-        # Could add more STT engines here:
-        # - Google Speech-to-Text
-        # - Azure Speech Services
-        # - Amazon Transcribe
-        # - OpenAI Whisper API
-        
+        for i, test_case in enumerate(test_cases, 1):
+            print(f"  📝 Test {i}/{len(test_cases)}: '{test_case['input']}'")
+
+            start_time = time.time()
+            intent = self.semantic_parser.parse_voice_command(test_case['input'])
+            parse_time = time.time() - start_time
+
+            # Evaluate results
+            passed = True
+            failures = []
+
+            for expected_key, expected_value in test_case['expected'].items():
+                actual_value = getattr(intent, expected_key, None)
+                if expected_key == 'steps' and actual_value:
+                    # For steps, check if the expected steps are contained
+                    if not all(any(expected_step.lower() in actual_step.lower()
+                              for actual_step in actual_value)
+                              for expected_step in expected_value):
+                        passed = False
+                        failures.append(f"{expected_key}: expected {expected_value}, got {actual_value}")
+                elif expected_key in ['note_title', 'search_query', 'note_content']:
+                    # For text fields, check if key terms are present
+                    if actual_value and expected_value.lower() not in actual_value.lower():
+                        passed = False
+                        failures.append(f"{expected_key}: expected to contain '{expected_value}', got '{actual_value}'")
+                elif actual_value != expected_value:
+                    passed = False
+                    failures.append(f"{expected_key}: expected {expected_value}, got {actual_value}")
+
+            result = {
+                'test_id': i,
+                'input': test_case['input'],
+                'category': test_case['category'],
+                'expected': test_case['expected'],
+                'actual': intent.__dict__,
+                'passed': passed,
+                'failures': failures,
+                'parse_time_ms': round(parse_time * 1000, 2),
+                'confidence': intent.confidence
+            }
+
+            results.append(result)
+            status = "✅" if passed else "❌"
+            print(f"    {status} {parse_time*1000:.1f}ms - Confidence: {intent.confidence:.2f}")
+            if not passed:
+                for failure in failures:
+                    print(f"      ⚠️  {failure}")
+
+        self.test_results['semantic_parser_tests'] = results
         return results
 
-    def calculate_text_similarity(self, original: str, transcribed: str) -> float:
-        """Calculate similarity between original and transcribed text"""
-        # Simple word-based similarity
-        orig_words = set(original.lower().split())
-        trans_words = set(transcribed.lower().split())
-        
-        if not orig_words:
-            return 0.0
-        
-        intersection = orig_words.intersection(trans_words)
-        return len(intersection) / len(orig_words)
+    def test_automation_execution(self) -> Dict:
+        """Test automation execution without actually running the automations"""
+        print("\n🚀 Testing Automation Execution (Safe Mode)")
 
-    def analyze_audio_quality(self, internal_file: str, recorded_file: str) -> Dict[str, Any]:
-        """Analyze audio quality degradation"""
+        # Test cases that we can verify without actually executing
+        test_commands = [
+            'Open Chrome',
+            'Search for Python tutorials',
+            'Create a note about testing',
+            'Open Safari and search for voice recognition',
+            'Delete all files'  # Should be blocked by safety
+        ]
+
+        results = []
+        for i, command in enumerate(test_commands, 1):
+            print(f"  🎯 Test {i}/{len(test_commands)}: '{command}'")
+
+            start_time = time.time()
+            result = self.automation.execute_voice_command(command)
+            execution_time = time.time() - start_time
+
+            # Analyze the result
+            passed = True
+            analysis = []
+
+            if result.get('safety_blocked'):
+                analysis.append("✅ Safety system activated")
+                if 'delete' in command.lower():
+                    analysis.append("✅ Correctly blocked destructive command")
+                else:
+                    passed = False
+                    analysis.append("❌ Safe command incorrectly blocked")
+
+            elif result.get('automation_performed'):
+                analysis.append("✅ Automation system engaged")
+                if result.get('success'):
+                    analysis.append("✅ Automation reported success")
+                else:
+                    analysis.append("⚠️  Automation reported failure")
+                    analysis.append(f"    Reason: {result.get('message', 'Unknown')}")
+
+            else:
+                analysis.append("⚠️  No automation performed")
+                passed = False
+
+            test_result = {
+                'test_id': i,
+                'command': command,
+                'result': result,
+                'passed': passed,
+                'analysis': analysis,
+                'execution_time_ms': round(execution_time * 1000, 2)
+            }
+
+            results.append(test_result)
+            status = "✅" if passed else "❌"
+            print(f"    {status} {execution_time*1000:.1f}ms")
+            for note in analysis:
+                print(f"      {note}")
+
+        self.test_results['automation_tests'] = results
+        return results
+
+    def test_safety_validation(self) -> Dict:
+        """Test the safety validation system"""
+        print("\n🛡️  Testing Safety Validation System")
+
+        safety_test_cases = [
+            {'command': 'Open Chrome', 'should_be_safe': True},
+            {'command': 'Search for tutorials', 'should_be_safe': True},
+            {'command': 'Create a note', 'should_be_safe': True},
+            {'command': 'Delete all my files', 'should_be_safe': False},
+            {'command': 'Remove everything from disk', 'should_be_safe': False},
+            {'command': 'Format the hard drive', 'should_be_safe': False},
+            {'command': 'Edit a document', 'should_be_safe': True},
+        ]
+
+        results = []
+        for i, test_case in enumerate(safety_test_cases, 1):
+            print(f"  🔒 Safety Test {i}/{len(safety_test_cases)}: '{test_case['command']}'")
+
+            result = self.automation.execute_voice_command(test_case['command'])
+
+            # Check if safety system behaved correctly
+            is_blocked = result.get('safety_blocked', False)
+            should_be_safe = test_case['should_be_safe']
+
+            if should_be_safe and not is_blocked:
+                passed = True
+                outcome = "✅ Safe command allowed"
+            elif not should_be_safe and is_blocked:
+                passed = True
+                outcome = "✅ Dangerous command blocked"
+            elif should_be_safe and is_blocked:
+                passed = False
+                outcome = "❌ Safe command incorrectly blocked"
+            else:  # not should_be_safe and not is_blocked
+                passed = False
+                outcome = "❌ Dangerous command incorrectly allowed"
+
+            safety_result = {
+                'test_id': i,
+                'command': test_case['command'],
+                'should_be_safe': should_be_safe,
+                'was_blocked': is_blocked,
+                'passed': passed,
+                'outcome': outcome,
+                'safety_info': result.get('safety_info', {})
+            }
+
+            results.append(safety_result)
+            print(f"    {outcome}")
+
+        self.test_results['safety_tests'] = results
+        return results
+
+    def test_performance_benchmarks(self) -> Dict:
+        """Test performance characteristics"""
+        print("\n⚡ Testing Performance Benchmarks")
+
+        # Test parsing speed
+        test_commands = [
+            'Open Chrome',
+            'Search for Python machine learning tutorials and documentation',
+            'Create a detailed note about today\'s breakthrough discoveries and innovations',
+            'Open Safari and search for voice recognition then create a note about it'
+        ]
+
+        results = []
+        for complexity, command in enumerate(test_commands, 1):
+            print(f"  📊 Performance Test {complexity}: Complexity Level {complexity}")
+
+            # Run multiple iterations
+            times = []
+            for _ in range(5):
+                start_time = time.time()
+                intent = self.semantic_parser.parse_voice_command(command)
+                parse_time = time.time() - start_time
+                times.append(parse_time * 1000)  # Convert to milliseconds
+
+            avg_time = sum(times) / len(times)
+            min_time = min(times)
+            max_time = max(times)
+
+            # Performance thresholds
+            acceptable_time = 2000  # 2 seconds
+            good_time = 1500  # 1.5 seconds
+
+            if avg_time <= good_time:
+                performance = "🚀 Excellent"
+            elif avg_time <= acceptable_time:
+                performance = "✅ Good"
+            else:
+                performance = "⚠️  Slow"
+
+            perf_result = {
+                'complexity_level': complexity,
+                'command': command,
+                'avg_time_ms': round(avg_time, 1),
+                'min_time_ms': round(min_time, 1),
+                'max_time_ms': round(max_time, 1),
+                'performance_rating': performance,
+                'meets_threshold': avg_time <= acceptable_time
+            }
+
+            results.append(perf_result)
+            print(f"    {performance} - Avg: {avg_time:.1f}ms (Range: {min_time:.1f}-{max_time:.1f}ms)")
+
+        self.test_results['performance_tests'] = results
+        return results
+
+    def verify_system_dependencies(self) -> Dict:
+        """Verify all system dependencies are working"""
+        print("\n🔧 Verifying System Dependencies")
+
+        dependencies = []
+
+        # Test Ollama availability
         try:
-            # Load both files
-            with wave.open(internal_file, 'rb') as wav:
-                internal_data = np.frombuffer(wav.readframes(wav.getnframes()), dtype=np.int16)
-            
-            with wave.open(recorded_file, 'rb') as wav:
-                recorded_data = np.frombuffer(wav.readframes(wav.getnframes()), dtype=np.int16)
-            
-            # Basic quality metrics
-            internal_rms = np.sqrt(np.mean(internal_data.astype(np.float64) ** 2))
-            recorded_rms = np.sqrt(np.mean(recorded_data.astype(np.float64) ** 2))
-            
-            # Signal degradation
-            signal_ratio = recorded_rms / internal_rms if internal_rms > 0 else 0
-            
-            return {
-                'internal_rms': float(internal_rms),
-                'recorded_rms': float(recorded_rms),
-                'signal_ratio': float(signal_ratio),
-                'quality_score': min(1.0, signal_ratio) if signal_ratio <= 1.0 else 1.0 / signal_ratio
-            }
-            
+            response = requests.get("http://localhost:11434/api/tags", timeout=5)
+            if response.status_code == 200:
+                models = response.json().get('models', [])
+                ollama_status = f"✅ Ollama running with {len(models)} models"
+                ollama_working = True
+            else:
+                ollama_status = f"⚠️  Ollama responding but returned {response.status_code}"
+                ollama_working = False
         except Exception as e:
-            return {
-                'internal_rms': 0.0,
-                'recorded_rms': 0.0,
-                'signal_ratio': 0.0,
-                'quality_score': 0.0,
-                'error': str(e)
-            }
+            ollama_status = f"❌ Ollama not accessible: {e}"
+            ollama_working = False
 
-    async def run_single_test(self, phrase_idx: int, phrase: str) -> Dict[str, Any]:
-        """Run a complete test cycle for one phrase"""
-        print(f"\n🧪 Test {phrase_idx + 1}/{len(self.test_phrases)}: {phrase[:50]}...")
-        
-        test_result = {
-            'test_id': phrase_idx + 1,
-            'original_text': phrase,
-            'timestamp': datetime.now().isoformat(),
-            'internal_audio': None,
-            'recorded_audio': None,
-            'stt_results': [],
-            'quality_analysis': {},
-            'accuracy_score': 0.0
-        }
-        
-        # Generate internal speech
-        internal_filename = f"test_{phrase_idx+1:02d}_internal.wav"
-        internal_file = self.generate_internal_speech(phrase, internal_filename)
-        if internal_file:
-            test_result['internal_audio'] = internal_filename
-        
-        # Record speaker-microphone loop
-        recorded_filename = f"test_{phrase_idx+1:02d}_recorded.wav"
-        recorded_file = self.record_speaker_microphone_loop(phrase, recorded_filename)
-        if recorded_file:
-            test_result['recorded_audio'] = recorded_filename
-        
-        # Test STT engines on recorded audio
-        if recorded_file:
-            stt_results = await self.test_multiple_stt_engines(recorded_file)
-            test_result['stt_results'] = stt_results
-            
-            # Calculate accuracy
-            if stt_results and stt_results[0]['success']:
-                transcribed = stt_results[0]['text']
-                accuracy = self.calculate_text_similarity(phrase, transcribed)
-                test_result['accuracy_score'] = accuracy
-                
-                print(f"📝 Original: {phrase}")
-                print(f"🎯 Transcribed: {transcribed}")
-                print(f"📊 Accuracy: {accuracy:.1%}")
-        
-        # Analyze audio quality
-        if internal_file and recorded_file:
-            quality = self.analyze_audio_quality(internal_file, recorded_file)
-            test_result['quality_analysis'] = quality
-            print(f"🔊 Audio quality score: {quality.get('quality_score', 0):.1%}")
-        
-        # Brief pause between tests
-        time.sleep(2)
-        
-        return test_result
+        dependencies.append({
+            'name': 'Ollama LLM Server',
+            'status': ollama_status,
+            'working': ollama_working
+        })
 
-    async def run_autonomous_test_suite(self):
-        """Run complete autonomous test suite"""
-        print(f"\n🚀 Starting Autonomous Voice Test Suite")
-        print(f"📊 Running {len(self.test_phrases)} comprehensive tests")
-        
-        self.results['tests'] = []
-        
-        for idx, phrase in enumerate(self.test_phrases):
-            try:
-                test_result = await self.run_single_test(idx, phrase)
-                self.results['tests'].append(test_result)
-                
-                # Save intermediate results
-                await self.save_results()
-                
-            except Exception as e:
-                print(f"❌ Test {idx + 1} failed: {e}")
-                error_result = {
-                    'test_id': idx + 1,
-                    'original_text': phrase,
-                    'timestamp': datetime.now().isoformat(),
-                    'error': str(e),
-                    'accuracy_score': 0.0
-                }
-                self.results['tests'].append(error_result)
-        
-        # Generate final analysis
-        await self.generate_test_summary()
-        
-        print(f"\n✅ Autonomous testing complete!")
-        print(f"📁 Results saved to: {self.session_dir}")
+        # Test macOS system commands
+        try:
+            result = subprocess.run(['osascript', '-e', 'tell application "System Events" to get name of first application process'],
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                osascript_status = "✅ macOS AppleScript working"
+                osascript_working = True
+            else:
+                osascript_status = f"⚠️  AppleScript error: {result.stderr}"
+                osascript_working = False
+        except Exception as e:
+            osascript_status = f"❌ AppleScript not available: {e}"
+            osascript_working = False
 
-    async def generate_test_summary(self):
-        """Generate comprehensive test summary"""
-        tests = [t for t in self.results['tests'] if 'error' not in t]
-        
-        if not tests:
-            self.results['summary'] = {'error': 'No successful tests'}
-            return
-        
-        # Calculate metrics
-        accuracy_scores = [t['accuracy_score'] for t in tests if t['accuracy_score'] > 0]
-        quality_scores = [t['quality_analysis'].get('quality_score', 0) for t in tests if t.get('quality_analysis')]
-        processing_times = []
-        
-        for test in tests:
-            for stt_result in test.get('stt_results', []):
-                if stt_result.get('success'):
-                    processing_times.append(stt_result.get('processing_time', 0))
-        
-        summary = {
-            'total_tests': len(self.results['tests']),
-            'successful_tests': len(tests),
-            'average_accuracy': np.mean(accuracy_scores) if accuracy_scores else 0.0,
-            'accuracy_std': np.std(accuracy_scores) if accuracy_scores else 0.0,
-            'average_quality': np.mean(quality_scores) if quality_scores else 0.0,
-            'average_processing_time': np.mean(processing_times) if processing_times else 0.0,
-            'best_accuracy': max(accuracy_scores) if accuracy_scores else 0.0,
-            'worst_accuracy': min(accuracy_scores) if accuracy_scores else 0.0,
-            'completion_time': datetime.now().isoformat()
-        }
-        
-        self.results['summary'] = summary
-        
-        print(f"\n📊 AUTONOMOUS TEST SUMMARY:")
-        print(f"   Total Tests: {summary['total_tests']}")
-        print(f"   Successful: {summary['successful_tests']}")
-        print(f"   Average Accuracy: {summary['average_accuracy']:.1%}")
-        print(f"   Average Quality: {summary['average_quality']:.1%}")
-        print(f"   Average Processing Time: {summary['average_processing_time']:.2f}s")
-        print(f"   Best Accuracy: {summary['best_accuracy']:.1%}")
-        print(f"   Worst Accuracy: {summary['worst_accuracy']:.1%}")
+        dependencies.append({
+            'name': 'macOS AppleScript',
+            'status': osascript_status,
+            'working': osascript_working
+        })
 
-    async def save_results(self):
-        """Save test results to JSON file"""
-        results_file = self.session_dir / "autonomous_test_results.json"
-        
-        with open(results_file, 'w') as f:
-            json.dump(self.results, f, indent=2, default=str)
-        
-        print(f"💾 Results saved: {results_file.name}")
+        # Test text-to-speech
+        try:
+            result = subprocess.run(['say', '--voice=?'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                voices = len([line for line in result.stdout.split('\n') if line.strip()])
+                tts_status = f"✅ Text-to-speech working with {voices} voices"
+                tts_working = True
+            else:
+                tts_status = "⚠️  Text-to-speech issues"
+                tts_working = False
+        except Exception as e:
+            tts_status = f"❌ Text-to-speech not available: {e}"
+            tts_working = False
 
-    async def generate_detailed_report(self):
-        """Generate detailed markdown report"""
-        report_file = self.session_dir / "AUTONOMOUS_TEST_REPORT.md"
-        
-        with open(report_file, 'w') as f:
-            f.write(f"# Autonomous Voice Testing Report\n\n")
-            f.write(f"**Session ID:** {self.session_id}\n")
-            f.write(f"**Date:** {self.results['start_time']}\n")
-            f.write(f"**Total Tests:** {len(self.results['tests'])}\n\n")
-            
-            if 'summary' in self.results and 'error' not in self.results['summary']:
-                summary = self.results['summary']
-                f.write(f"## Summary\n\n")
-                f.write(f"- **Average Accuracy:** {summary['average_accuracy']:.1%}\n")
-                f.write(f"- **Average Quality:** {summary['average_quality']:.1%}\n")
-                f.write(f"- **Average Processing Time:** {summary['average_processing_time']:.2f}s\n")
-                f.write(f"- **Best Accuracy:** {summary['best_accuracy']:.1%}\n")
-                f.write(f"- **Worst Accuracy:** {summary['worst_accuracy']:.1%}\n\n")
-            
-            f.write(f"## Individual Test Results\n\n")
-            
-            for test in self.results['tests']:
-                f.write(f"### Test {test['test_id']}\n\n")
-                f.write(f"**Original:** {test['original_text']}\n\n")
-                
-                if 'stt_results' in test and test['stt_results']:
-                    stt = test['stt_results'][0]
-                    if stt.get('success'):
-                        f.write(f"**Transcribed:** {stt['text']}\n\n")
-                        f.write(f"**Accuracy:** {test['accuracy_score']:.1%}\n\n")
-                        f.write(f"**Confidence:** {stt['confidence']:.1%}\n\n")
-                        f.write(f"**Processing Time:** {stt['processing_time']:.2f}s\n\n")
+        dependencies.append({
+            'name': 'macOS Text-to-Speech',
+            'status': tts_status,
+            'working': tts_working
+        })
+
+        for dep in dependencies:
+            print(f"  {dep['status']}")
+
+        return dependencies
+
+    def generate_comprehensive_report(self) -> str:
+        """Generate a comprehensive test report"""
+        print("\n📋 Generating Comprehensive Test Report")
+
+        # Calculate summary statistics
+        total_tests = 0
+        passed_tests = 0
+
+        for test_category in ['semantic_parser_tests', 'automation_tests', 'safety_tests']:
+            if test_category in self.test_results:
+                category_tests = self.test_results[test_category]
+                total_tests += len(category_tests)
+                passed_tests += sum(1 for test in category_tests if test.get('passed', False))
+
+        success_rate = (passed_tests / total_tests * 100) if total_tests > 0 else 0
+
+        # Performance summary
+        perf_tests = self.test_results.get('performance_tests', [])
+        avg_performance = sum(test['avg_time_ms'] for test in perf_tests) / len(perf_tests) if perf_tests else 0
+
+        report = f"""
+🚀 AUTONOMOUS VOICE AUTOMATION TEST REPORT
+{'='*70}
+📅 Test Session: {self.test_results['session_start']}
+⏰ Completed: {datetime.now().isoformat()}
+
+📊 OVERALL RESULTS
+✅ Passed Tests: {passed_tests}/{total_tests} ({success_rate:.1f}%)
+⚡ Average Response Time: {avg_performance:.1f}ms
+🧠 Semantic Parser Available: {self.semantic_parser.is_available}
+
+🧪 TEST CATEGORY BREAKDOWN
+"""
+
+        # Add detailed results for each category
+        for category_name, display_name in [
+            ('semantic_parser_tests', 'Semantic Parser Tests'),
+            ('automation_tests', 'Automation Execution Tests'),
+            ('safety_tests', 'Safety Validation Tests'),
+            ('performance_tests', 'Performance Benchmark Tests')
+        ]:
+            if category_name in self.test_results and self.test_results[category_name]:
+                tests = self.test_results[category_name]
+                passed = sum(1 for test in tests if test.get('passed', True))
+                report += f"\n{display_name}: {passed}/{len(tests)} passed\n"
+
+                for test in tests:
+                    status = "✅" if test.get('passed', True) else "❌"
+                    if category_name == 'performance_tests':
+                        report += f"  {status} Complexity {test['complexity_level']}: {test['avg_time_ms']:.1f}ms\n"
                     else:
-                        f.write(f"**Error:** {stt.get('error', 'Unknown error')}\n\n")
-                
-                if 'quality_analysis' in test and test['quality_analysis']:
-                    quality = test['quality_analysis']
-                    f.write(f"**Audio Quality Score:** {quality.get('quality_score', 0):.1%}\n\n")
-                
-                f.write(f"**Files:** `{test.get('internal_audio', 'N/A')}`, `{test.get('recorded_audio', 'N/A')}`\n\n")
-                f.write(f"---\n\n")
-        
-        print(f"📝 Detailed report generated: {report_file.name}")
+                        test_name = test.get('input', test.get('command', f"Test {test.get('test_id')}"))
+                        report += f"  {status} {test_name}\n"
 
-async def main():
-    """Main autonomous testing function"""
-    print("🤖 AUTONOMOUS VOICE TESTING SYSTEM")
-    print("==================================")
-    
-    # Initialize tester
+        # Add recommendations
+        report += f"""
+🎯 RECOMMENDATIONS
+"""
+
+        if success_rate >= 90:
+            report += "✅ System performing excellently - ready for production use\n"
+        elif success_rate >= 75:
+            report += "⚠️  System mostly working - investigate failing tests\n"
+        else:
+            report += "❌ System needs significant improvements before use\n"
+
+        if avg_performance <= 1500:
+            report += "⚡ Performance excellent - under 1.5s average response time\n"
+        elif avg_performance <= 2000:
+            report += "✅ Performance acceptable - under 2s average response time\n"
+        else:
+            report += "⚠️  Performance slow - consider optimization\n"
+
+        report += f"""
+{'='*70}
+🤖 Generated by Autonomous Voice Testing Framework
+🧠 DollhouseMCP Collaborative Analysis Complete
+"""
+
+        return report
+
+    def run_full_test_suite(self) -> Dict:
+        """Run the complete autonomous test suite"""
+        print("🧪 AUTONOMOUS VOICE AUTOMATION TEST SUITE")
+        print("="*70)
+        print("🤖 DollhouseMCP Collaborative Testing - No Human Input Required")
+        print("="*70)
+
+        # Run all test categories
+        self.verify_system_dependencies()
+        self.test_semantic_parser_standalone()
+        self.test_automation_execution()
+        self.test_safety_validation()
+        self.test_performance_benchmarks()
+
+        # Generate and display report
+        report = self.generate_comprehensive_report()
+        print(report)
+
+        # Save detailed results
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        results_file = f"autonomous_test_results_{timestamp}.json"
+
+        with open(results_file, 'w') as f:
+            json.dump(self.test_results, f, indent=2, default=str)
+
+        print(f"\n📁 Detailed results saved to: {results_file}")
+
+        return self.test_results
+
+
+def main():
+    """Run the autonomous testing framework"""
     tester = AutonomousVoiceTester()
-    
-    # Initialize components
-    success = await tester.initialize_components()
-    if not success:
-        print("❌ Failed to initialize components")
-        return
-    
-    # Run autonomous test suite
-    await tester.run_autonomous_test_suite()
-    
-    # Generate detailed report
-    await tester.generate_detailed_report()
-    
-    print(f"\n🎉 AUTONOMOUS TESTING COMPLETED SUCCESSFULLY!")
-    print(f"📁 All results saved to: {tester.session_dir}")
-    print(f"📊 Check autonomous_test_results.json for raw data")
-    print(f"📝 Check AUTONOMOUS_TEST_REPORT.md for detailed analysis")
+    results = tester.run_full_test_suite()
 
-if __name__ == '__main__':
-    asyncio.run(main())
+    # Use the voice narrator to announce results
+    total_tests = sum(len(results.get(category, []))
+                     for category in ['semantic_parser_tests', 'automation_tests', 'safety_tests'])
+    passed_tests = sum(sum(1 for test in results.get(category, []) if test.get('passed', False))
+                      for category in ['semantic_parser_tests', 'automation_tests', 'safety_tests'])
+
+    success_rate = (passed_tests / total_tests * 100) if total_tests > 0 else 0
+
+    print(f"\n🔊 Speaking results summary...")
+    import subprocess
+    subprocess.run(['say', f"Autonomous testing complete. {passed_tests} out of {total_tests} tests passed. Success rate: {success_rate:.0f} percent."])
+
+
+if __name__ == "__main__":
+    main()

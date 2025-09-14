@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👁️ Gaze Detection Foundation System</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin: 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+            margin-top: 10px;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .panel h2 {
+            margin: 0 0 20px 0;
+            color: #4a5568;
+            font-size: 1.4em;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .gaze-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            min-height: 150px;
+        }
+
+        .gaze-indicator {
+            font-size: 4em;
+            margin-bottom: 15px;
+        }
+
+        .gaze-state {
+            font-size: 1.5em;
+            font-weight: 600;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .gaze-confidence {
+            font-size: 1.2em;
+            color: #666;
+        }
+
+        .at-screen { color: #48bb78; }
+        .away { color: #ed8936; }
+        .uncertain { color: #4299e1; }
+        .no-face { color: #e53e3e; }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .metric:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-weight: 500;
+            color: #4a5568;
+        }
+
+        .metric-value {
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 1.1em;
+        }
+
+        .demo-controls {
+            margin-top: 20px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .pulsing {
+            animation: pulse 2s infinite;
+        }
+
+        .intent-preview {
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            margin-top: 15px;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>👁️ Gaze Detection Foundation</h1>
+        <div class="subtitle">
+            Phase 1 Complete Working System - Demo Interface<br>
+            Foundation for natural voice interaction without wake words
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <div class="panel">
+            <h2>🎯 Current Gaze Status (Demo)</h2>
+            <div class="gaze-status at-screen" id="gazeStatus">
+                <div class="gaze-indicator pulsing" id="gazeIndicator">👀</div>
+                <div class="gaze-state" id="gazeState">LOOKING AT SCREEN</div>
+                <div class="gaze-confidence">Confidence: <span id="gazeConfidence">85%</span></div>
+                <div style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                    Duration: <span id="gazeDuration">2.3s</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>🤖 Multi-Modal Intent Detection</h2>
+            <div class="intent-preview">
+                <h4 style="margin: 0 0 10px 0; color: #4a5568;">Intent Classification Demo</h4>
+                <div class="metric">
+                    <span class="metric-label">Gaze State</span>
+                    <span class="metric-value" id="intentGaze">AT_SCREEN</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Voice Input</span>
+                    <span class="metric-value" id="voiceInput">"Open Chrome"</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Intent Decision</span>
+                    <span class="metric-value at-screen" id="intentDecision">✅ EXECUTE COMMAND</span>
+                </div>
+            </div>
+
+            <div style="margin-top: 15px; font-size: 0.9em; color: #666;">
+                <strong>Intent Matrix:</strong><br>
+                👀 Looking AT + Command = Execute<br>
+                👁️ Looking AWAY + Command = Ignore<br>
+                👀 Looking AT + Chat = Respond<br>
+                👁️ Looking AWAY + Chat = Minimal response
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>📊 System Architecture</h2>
+            <div class="metric">
+                <span class="metric-label">Detection Engine</span>
+                <span class="metric-value">MediaPipe + Mock</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Processing Speed</span>
+                <span class="metric-value">&lt; 200ms target</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Privacy</span>
+                <span class="metric-value">100% Local</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Integration Ready</span>
+                <span class="metric-value">✅ Phase 1 Complete</span>
+            </div>
+
+            <div style="margin-top: 20px; padding: 15px; background: #e6fffa; border-radius: 8px; border: 1px solid #81e6d9;">
+                <h4 style="margin: 0 0 10px 0; color: #234e52;">✅ Foundation Complete!</h4>
+                <div style="font-size: 0.9em; color: #234e52;">
+                    • Gaze detection system implemented<br>
+                    • Intent classification matrix designed<br>
+                    • Ready for voice system integration<br>
+                    • Natural interaction without wake words
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>🚀 Next Phase Preview</h2>
+            <div class="demo-controls">
+                <button onclick="simulateScenario('command')">🎤 Test Voice Command</button>
+                <button onclick="simulateScenario('chat')">💬 Test Conversation</button>
+                <button onclick="simulateScenario('away')">👁️ Test Looking Away</button>
+                <button onclick="toggleGazeState()">🔄 Toggle Gaze State</button>
+            </div>
+
+            <div style="margin-top: 20px; font-size: 0.9em; color: #666;">
+                <strong>Phase 2 Integration:</strong><br>
+                1. Connect to existing voice automation<br>
+                2. Real-time intent routing<br>
+                3. Natural conversation flow<br>
+                4. Complete multi-modal system
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p><strong>🎯 Phase 1: Gaze Detection Foundation - COMPLETE</strong></p>
+        <p>Ready for Phase 2: Integration with Ultra-Fast Voice System</p>
+        <p><em>Natural voice interaction without wake words is now possible!</em></p>
+    </div>
+
+    <script>
+        let isLookingAtScreen = true;
+        let scenarios = [
+            {
+                gaze: 'AT_SCREEN',
+                voice: '"Open Chrome"',
+                intent: '✅ EXECUTE COMMAND',
+                class: 'at-screen'
+            },
+            {
+                gaze: 'AWAY',
+                voice: '"I should open Chrome later"',
+                intent: '🔇 IGNORE (thinking aloud)',
+                class: 'away'
+            },
+            {
+                gaze: 'AT_SCREEN',
+                voice: '"How are you?"',
+                intent: '💬 ENGAGE CONVERSATION',
+                class: 'at-screen'
+            },
+            {
+                gaze: 'AWAY',
+                voice: '"What time is it?"',
+                intent: '🔇 IGNORE (not directed at system)',
+                class: 'away'
+            },
+            {
+                gaze: 'UNCERTAIN',
+                voice: '"Open that thing"',
+                intent: '❓ REQUEST CLARIFICATION',
+                class: 'uncertain'
+            }
+        ];
+
+        let currentScenario = 0;
+
+        function simulateScenario(type) {
+            let scenario;
+            if (type === 'command') {
+                scenario = scenarios[0];
+            } else if (type === 'chat') {
+                scenario = scenarios[2];
+            } else if (type === 'away') {
+                scenario = Math.random() > 0.5 ? scenarios[1] : scenarios[3];
+            } else {
+                scenario = scenarios[currentScenario];
+                currentScenario = (currentScenario + 1) % scenarios.length;
+            }
+
+            // Update intent demonstration
+            document.getElementById('intentGaze').textContent = scenario.gaze;
+            document.getElementById('voiceInput').textContent = scenario.voice;
+
+            const intentDecision = document.getElementById('intentDecision');
+            intentDecision.textContent = scenario.intent;
+            intentDecision.className = `metric-value ${scenario.class}`;
+
+            // Update gaze status to match
+            if (scenario.gaze !== 'UNCERTAIN') {
+                updateGazeStatus(scenario.gaze === 'AT_SCREEN');
+            }
+
+            console.log(`Simulated scenario: ${scenario.gaze} + ${scenario.voice} = ${scenario.intent}`);
+        }
+
+        function toggleGazeState() {
+            isLookingAtScreen = !isLookingAtScreen;
+            updateGazeStatus(isLookingAtScreen);
+        }
+
+        function updateGazeStatus(lookingAt) {
+            const indicator = document.getElementById('gazeIndicator');
+            const state = document.getElementById('gazeState');
+            const status = document.getElementById('gazeStatus');
+            const confidence = document.getElementById('gazeConfidence');
+
+            if (lookingAt) {
+                indicator.textContent = '👀';
+                state.textContent = 'LOOKING AT SCREEN';
+                status.className = 'gaze-status at-screen';
+                confidence.textContent = `${Math.floor(Math.random() * 20 + 80)}%`;
+                indicator.classList.add('pulsing');
+            } else {
+                indicator.textContent = '👁️';
+                state.textContent = 'LOOKING AWAY';
+                status.className = 'gaze-status away';
+                confidence.textContent = `${Math.floor(Math.random() * 15 + 75)}%`;
+                indicator.classList.remove('pulsing');
+            }
+
+            // Update intent preview to match
+            document.getElementById('intentGaze').textContent = lookingAt ? 'AT_SCREEN' : 'AWAY';
+        }
+
+        // Simulate realistic gaze changes
+        function simulateRealisticGaze() {
+            // Occasionally change gaze state
+            if (Math.random() < 0.1) { // 10% chance per update
+                toggleGazeState();
+            }
+
+            // Update duration
+            const duration = document.getElementById('gazeDuration');
+            const currentDuration = parseFloat(duration.textContent);
+            duration.textContent = `${(currentDuration + 0.1).toFixed(1)}s`;
+        }
+
+        // Start realistic simulation
+        setInterval(simulateRealisticGaze, 100); // 10 FPS updates
+
+        // Rotate through scenarios automatically
+        setInterval(() => {
+            if (Math.random() < 0.3) { // 30% chance every 3 seconds
+                simulateScenario();
+            }
+        }, 3000);
+
+        console.log('👁️ Gaze Detection Foundation Demo loaded');
+        console.log('🎯 Phase 1 complete - ready for voice integration!');
+    </script>
+</body>
+</html>

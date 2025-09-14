@@ -195,3 +195,54 @@ config.local.json
 # Audio analysis artifacts
 spectrograms/
 audio_features/
+
+# Python-specific additions
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Development artifacts and testing
+audio_diagnostics/
+autonomous_voice_testing*/
+baseline_performance_*/
+*test_results*.json
+*session_*.json
+realtimestt.log
+
+# Temporary analysis files
+REALITY_CHECK_VALIDATION_SUMMARY.md
+VOICE_AUTOMATION_IMPROVEMENT_PLAN.md
+VOICE_AUTOMATION_OPTIMIZATION_RESULTS.md
