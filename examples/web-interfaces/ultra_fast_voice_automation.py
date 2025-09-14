@@ -270,37 +270,8 @@ class UltraFastVoiceAutomation:
         """Semantic validation for common patterns that failed regex matching"""
         text_lower = text.lower()
 
-        # Handle "open source" and similar conversational phrases
-        if 'open source' in text_lower:
-            if any(word in text_lower for word in ['software', 'applications', 'projects', 'tools', 'find', 'looking for']):
-                return {
-                    'response': "It sounds like you're interested in open source software! Would you like me to search for open source projects or applications?",
-                    'intent': 'chat_with_suggestion',
-                    'confidence': 0.8
-                }
-
-        # Handle other common conversational patterns that might trigger false positives
-        conversation_patterns = {
-            'tell me about': {
-                'response': "I'd be happy to help! What would you like to know about?",
-                'intent': 'information_request',
-                'confidence': 0.7
-            },
-            'what is': {
-                'response': "I can help explain things! What are you curious about?",
-                'intent': 'information_request',
-                'confidence': 0.7
-            },
-            'how do i': {
-                'response': "I can help with that! What are you trying to do?",
-                'intent': 'help_request',
-                'confidence': 0.7
-            }
-        }
-
-        for pattern, response_data in conversation_patterns.items():
-            if pattern in text_lower:
-                return response_data
+        # REMOVED: Hard-coded conversational blocks per user feedback
+        # Let the LLM handle "what is", "tell me about", "how do I", "open source" naturally
 
         return None
 
