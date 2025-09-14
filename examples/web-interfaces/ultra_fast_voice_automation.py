@@ -14,7 +14,8 @@ import json
 import subprocess
 import time
 import re
-from typing import Dict, Optional, Any, Tuple
+import os
+from typing import Dict, Optional, Any, Tuple, Set
 from dataclasses import dataclass
 
 
@@ -38,6 +39,10 @@ class UltraFastVoiceAutomation:
         self.ollama_url = "http://localhost:11434"
         self.model_name = "llama3.1:latest"
         self.stats = {"pattern_hits": 0, "llm_calls": 0, "total_calls": 0}
+
+        # Initialize application whitelist - ARCHITECTURAL IMPROVEMENT
+        self.installed_apps = self._get_installed_applications()
+        print(f"🎯 Application whitelist initialized: {len(self.installed_apps)} apps detected")
 
         # Pre-compiled patterns for maximum speed
         self.patterns = {
@@ -84,13 +89,12 @@ class UltraFastVoiceAutomation:
                 'app': 'terminal'
             },
 
-            # Generic app opening - now with context filtering
+            # Generic app opening - now with application whitelist
             'open_app_generic': {
                 'patterns': [r'\b(open|launch|start|run)\s+(a\s+|the\s+)?(\w+)(?:\s+(app|application|browser|program))?\b'],
                 'responses': ["Opening {app} for you!"],
                 'intent': 'open_app',
-                'extract_app': True,
-                'context_blacklist': ['source', 'mind', 'heart', 'book', 'file', 'door', 'window', 'eyes', 'mouth', 'box', 'can', 'up', 'ai', 'houses', 'homes', 'properties', 'listings', 'market', 'realtor', 'estate']
+                'extract_app': True
             },
 
             # Search commands
@@ -144,20 +148,18 @@ class UltraFastVoiceAutomation:
                         'response': random.choice(config['responses'])
                     }
 
-                    # Extract app name if needed with context filtering
+                    # Extract app name if needed with application whitelist
                     if config.get('extract_app') and len(match.groups()) >= 3:
                         app_name = match.group(3)  # Third group is the app name
-                        context_blacklist = config.get('context_blacklist', [])
 
-                        # Skip if app name is in blacklist or looks like conversation
+                        # WHITELIST APPROACH: Only match actual installed applications
                         if (app_name and
                             app_name not in ['app', 'application', 'browser', 'program'] and
-                            app_name.lower() not in context_blacklist and
                             self._is_likely_app_name(text, app_name)):
                             result['app'] = app_name.lower()
                             result['response'] = result['response'].format(app=app_name)
                         else:
-                            # Pattern matched but context suggests it's not an app command
+                            # Pattern matched but app not installed or context invalid
                             return None
 
                     # Extract search query if needed
@@ -174,45 +176,37 @@ class UltraFastVoiceAutomation:
 
         return None
 
+    def _get_installed_applications(self) -> Set[str]:
+        """Get set of installed application names - WHITELIST APPROACH"""
+        try:
+            # Get all .app bundles in /Applications
+            import glob
+            app_paths = glob.glob("/Applications/*.app")
+            app_names = set()
+
+            for app_path in app_paths:
+                # Extract clean app name
+                app_name = os.path.basename(app_path).replace('.app', '')
+                app_names.add(app_name.lower())
+
+                # Also add common variations
+                # "Google Chrome" → also match "chrome"
+                parts = app_name.lower().split()
+                if len(parts) > 1:
+                    app_names.add(parts[-1])  # Last word
+                    if 'google' in parts[0]:
+                        app_names.add(parts[1])  # "Google Chrome" → "chrome"
+
+            return app_names
+
+        except Exception as e:
+            print(f"⚠️  Application enumeration failed: {e}")
+            return {"chrome", "safari", "firefox", "code", "finder"}  # Fallback
+
     def _is_likely_app_name(self, full_text: str, potential_app: str) -> bool:
-        """Check if the extracted word is likely an actual app name in context"""
-        # Context clues that suggest it's NOT an app command
-        conversational_phrases = [
-            'open source',
-            'open mind',
-            'open book',
-            'open question',
-            'open about',
-            'open discussion',
-            'open conversation',
-            'open to',
-            'open up',
-            'open with',
-            'open houses',
-            'open homes',
-            'open house',
-            'open properties',
-            'open listings'
-        ]
-
-        full_lower = full_text.lower()
-
-        # If we detect conversational context, this probably isn't an app command
-        for phrase in conversational_phrases:
-            if phrase in full_lower:
-                return False
-
-        # Check if the potential app is surrounded by descriptive words
-        app_lower = potential_app.lower()
-        app_index = full_lower.find(app_lower)
-        if app_index != -1:
-            # Look for descriptive words after the potential app name
-            text_after = full_lower[app_index + len(app_lower):].strip()
-            descriptive_words = ['software', 'applications', 'projects', 'tools', 'programs', 'systems', 'development']
-            if any(word in text_after[:20] for word in descriptive_words):
-                return False
-
-        return True
+        """Check if the extracted word is an actual installed application - WHITELIST APPROACH"""
+        # ARCHITECTURAL IMPROVEMENT: Use actual installed app whitelist
+        return potential_app.lower() in self.installed_apps
 
     def _llm_fallback(self, voice_text: str, start_time: float) -> FastVoiceResponse:
         """Use LLM only when patterns fail - now with actual LLM integration"""
