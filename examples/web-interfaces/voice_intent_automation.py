@@ -31,7 +31,7 @@ class VoiceIntentAutomation:
             'semantic_parser_available': self.semantic_parser.is_available
         }
 
-        # App name mappings for macOS
+        # App name mappings for macOS - CRITICAL FIX: Handle space-separated names
         self.app_mappings = {
             'chrome': 'Google Chrome',
             'safari': 'Safari',
@@ -41,7 +41,15 @@ class VoiceIntentAutomation:
             'calculator': 'Calculator',
             'notes': 'Notes',
             'calendar': 'Calendar',
-            'mail': 'Mail'
+            'mail': 'Mail',
+            'textedit': 'TextEdit',
+            'text edit': 'TextEdit',  # CRITICAL: Handle "Text Edit" with space
+            'text editor': 'TextEdit',
+            'code': 'Visual Studio Code',
+            'vscode': 'Visual Studio Code',
+            'visual studio code': 'Visual Studio Code',
+            'photoshop': 'Adobe Photoshop',
+            'adobe photoshop': 'Adobe Photoshop'
         }
 
     def parse_intent(self, voice_text: str) -> Dict:
@@ -75,20 +83,34 @@ class VoiceIntentAutomation:
         return result
 
     def execute_open_app(self, app_name: str) -> Tuple[bool, str]:
-        """Execute app opening command via osascript"""
+        """Execute app opening command via osascript with improved error handling"""
         try:
+            # CRITICAL FIX: Normalize app name by removing extra spaces and converting to lowercase
+            normalized_name = ' '.join(app_name.lower().split())
+
             # Map common names to actual app names
-            actual_app_name = self.app_mappings.get(app_name.lower(), app_name)
+            actual_app_name = self.app_mappings.get(normalized_name, app_name.title())
+
+            print(f"🚀 Opening app: '{app_name}' -> '{actual_app_name}'")
 
             # Use osascript to open the application
             cmd = f'tell application "{actual_app_name}" to activate'
             result = subprocess.run(['osascript', '-e', cmd],
-                                  capture_output=True, text=True, timeout=10)
+                                  capture_output=True, text=True, timeout=15)
 
             if result.returncode == 0:
                 return True, f"Successfully opened {actual_app_name}"
             else:
-                return False, f"Failed to open {actual_app_name}: {result.stderr}"
+                # FALLBACK: Try using 'open' command if osascript fails
+                try:
+                    fallback_result = subprocess.run(['open', '-a', actual_app_name],
+                                                   capture_output=True, text=True, timeout=10)
+                    if fallback_result.returncode == 0:
+                        return True, f"Successfully opened {actual_app_name} (fallback method)"
+                    else:
+                        return False, f"App not found: '{actual_app_name}'. Try: {list(self.app_mappings.keys())[:5]}"
+                except Exception:
+                    return False, f"Failed to open {actual_app_name}: {result.stderr}"
 
         except subprocess.TimeoutExpired:
             return False, f"Timeout opening {app_name}"
@@ -135,6 +157,68 @@ class VoiceIntentAutomation:
     def execute_browser_navigate(self, browser: str, search_query: str) -> Tuple[bool, str]:
         """Execute browser opening and navigation in one command"""
         return self.execute_search_web(search_query, browser)
+
+    def execute_url_navigation(self, browser: str, url: str) -> Tuple[bool, str]:
+        """Navigate to a specific URL in the specified browser"""
+        try:
+            # Normalize browser name
+            browser = browser.lower()
+            if browser not in ['chrome', 'safari', 'firefox']:
+                browser = 'safari'  # Default fallback
+
+            # Clean up URL
+            if not url.startswith(('http://', 'https://')):
+                url = f"https://{url}"
+
+            # Open browser first
+            open_success, _ = self.execute_open_app(browser)
+            if not open_success:
+                return False, f"Could not open {browser}"
+
+            time.sleep(1)  # Brief delay
+
+            # Use system open command for URL
+            result = subprocess.run(['open', url], capture_output=True, text=True, timeout=10)
+
+            if result.returncode == 0:
+                return True, f"Successfully navigated to {url} in {browser}"
+            else:
+                return False, f"Failed to navigate to URL: {result.stderr}"
+
+        except Exception as e:
+            return False, f"Error navigating to URL: {str(e)}"
+
+    def execute_create_note(self, content: str = "", title: str = "Voice Note") -> Tuple[bool, str]:
+        """Create a new note using Notes app"""
+        try:
+            # First open Notes app
+            open_success, _ = self.execute_open_app("notes")
+            if not open_success:
+                return False, "Could not open Notes app"
+
+            time.sleep(1)  # Brief delay for app to open
+
+            # Use AppleScript to create the note
+            safe_title = title.replace('"', '\\"')
+            safe_content = content.replace('"', '\\"')
+
+            script = f'''
+            tell application "Notes"
+                activate
+                make new note with properties {{name:"{safe_title}", body:"{safe_content}"}}
+            end tell
+            '''
+
+            result = subprocess.run(['osascript', '-e', script],
+                                  capture_output=True, text=True, timeout=10)
+
+            if result.returncode == 0:
+                return True, f"Created note '{title}' successfully"
+            else:
+                return False, f"Failed to create note: {result.stderr}"
+
+        except Exception as e:
+            return False, f"Error creating note: {str(e)}"
 
     def execute_claude_code(self, query: str) -> Tuple[bool, str]:
         """Execute Claude Code command via Terminal"""
@@ -193,9 +277,9 @@ class VoiceIntentAutomation:
         }
 
         try:
-            if intent_type == 'open_app':
-                app_name = intent_data['matches'][0]
-                success, message = self.execute_open_app(app_name)
+            # CRITICAL FIX: Handle complex commands with better intent processing
+            if intent_type == 'open_app' and intent_data['target_app']:
+                success, message = self.execute_open_app(intent_data['target_app'])
                 result.update({
                     'success': success,
                     'message': message,
@@ -203,9 +287,8 @@ class VoiceIntentAutomation:
                     'action_type': 'app_launch'
                 })
 
-            elif intent_type == 'search_web':
-                search_query = intent_data['matches'][0]
-                success, message = self.execute_search_web(search_query)
+            elif intent_type == 'search_web' and intent_data['search_query']:
+                success, message = self.execute_search_web(intent_data['search_query'])
                 result.update({
                     'success': success,
                     'message': message,
@@ -214,9 +297,15 @@ class VoiceIntentAutomation:
                 })
 
             elif intent_type == 'browser_navigate':
-                browser = intent_data['matches'][0]
-                search_query = intent_data['matches'][1]
-                success, message = self.execute_browser_navigate(browser, search_query)
+                # Handle "Open Chrome and search for X" type commands
+                if intent_data['target_app'] and intent_data['search_query']:
+                    success, message = self.execute_browser_navigate(intent_data['target_app'], intent_data['search_query'])
+                elif intent_data['search_query']:
+                    # If no specific app mentioned, use default browser
+                    success, message = self.execute_search_web(intent_data['search_query'])
+                else:
+                    success, message = False, "Browser navigate command missing details"
+
                 result.update({
                     'success': success,
                     'message': message,
@@ -224,21 +313,52 @@ class VoiceIntentAutomation:
                     'action_type': 'browser_navigate'
                 })
 
-            elif intent_type == 'claude_code':
-                query = intent_data['matches'][0]
-                success, message = self.execute_claude_code(query)
+            elif intent_type == 'navigate_url' and intent_data.get('browser') and intent_data.get('url'):
+                # Handle URL navigation
+                browser = intent_data['browser']
+                url = intent_data['url']
+                success, message = self.execute_url_navigation(browser, url)
                 result.update({
                     'success': success,
                     'message': message,
                     'automation_performed': True,
-                    'action_type': 'claude_code'
+                    'action_type': 'url_navigation'
+                })
+
+            elif intent_type == 'create_note':
+                success, message = self.execute_create_note(
+                    intent_data.get('note_content', 'Voice note'),
+                    intent_data.get('note_title', 'Voice Note')
+                )
+                result.update({
+                    'success': success,
+                    'message': message,
+                    'automation_performed': True,
+                    'action_type': 'note_creation'
+                })
+
+            elif intent_type == 'chat':
+                # Handle conversational responses - no automation needed
+                conversational_response = intent_data.get('parameters', {}).get('response', 'I heard you!')
+                result.update({
+                    'success': True,
+                    'message': conversational_response,
+                    'automation_performed': False,
+                    'action_type': 'conversation'
                 })
 
             else:
+                # Handle unknown commands with helpful response
+                if intent_data.get('parameters', {}).get('response'):
+                    response = intent_data['parameters']['response']
+                else:
+                    response = f"I understood you said '{voice_text}', but I'm not sure how to help with that yet."
+
                 result.update({
                     'success': False,
-                    'message': f"Unknown command intent: '{voice_text}'",
-                    'automation_performed': False
+                    'message': response,
+                    'automation_performed': False,
+                    'action_type': 'unknown'
                 })
 
             # Update statistics

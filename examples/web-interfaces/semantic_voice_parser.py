@@ -66,7 +66,7 @@ class SemanticVoiceParser:
         try:
             # Check if Ollama is running
             req = urllib.request.Request(f"{self.ollama_base_url}/api/tags")
-            with urllib.request.urlopen(req, timeout=5) as response:
+            with urllib.request.urlopen(req, timeout=10) as response:
                 if response.status != 200:
                     return False
 
@@ -117,12 +117,14 @@ Recent conversation context:
 
 Respond with ONLY a JSON object in this exact format:
 
-{{"response": "natural conversational response", "intent_type": "open_app|search_web|navigate_url|create_note|chat|unknown", "target_app": "app_name or null", "search_query": "query or null", "url": "url or null", "browser": "browser or null", "note_content": "content or null", "confidence": 0.9}}
+{{"response": "natural conversational response", "intent_type": "open_app|search_web|navigate_url|browser_navigate|create_note|chat|unknown", "target_app": "app_name or null", "search_query": "query or null", "url": "url or null", "browser": "browser or null", "note_content": "content or null", "confidence": 0.9}}
 
 NATURALISTIC EXAMPLES:
 "Open Chrome" → {{"response":"Opening Chrome for you!","intent_type":"open_app","target_app":"chrome","confidence":0.9}}
 "Go to hackernews.com" → {{"response":"Navigating to hackernews.com","intent_type":"navigate_url","url":"hackernews.com","browser":"safari","confidence":0.9}}
 "Open Safari and go to github.com" → {{"response":"Opening Safari and navigating to GitHub","intent_type":"navigate_url","url":"github.com","browser":"safari","confidence":0.9}}
+"Open Chrome and search for machine learning" → {{"response":"Opening Chrome and searching for machine learning","intent_type":"browser_navigate","target_app":"chrome","search_query":"machine learning","confidence":0.9}}
+"Go to Chrome and search for voice recognition" → {{"response":"Opening Chrome and searching for voice recognition","intent_type":"browser_navigate","target_app":"chrome","search_query":"voice recognition","confidence":0.9}}
 "Create a new note about today's meeting" → {{"response":"Creating a new note about today's meeting","intent_type":"create_note","target_app":"notes","note_content":"Today's meeting notes","confidence":0.9}}
 "Make a new document in VSCode" → {{"response":"Creating a new document in Visual Studio Code","intent_type":"create_note","target_app":"code","confidence":0.9}}
 "What is open source software?" → {{"response":"Open source software is software with source code that anyone can inspect, modify, and enhance. Popular examples include Linux, Python, and WordPress.","intent_type":"chat","confidence":0.9}}
@@ -131,74 +133,81 @@ Handle ALL commands naturally - no pattern matching limitations. Respond with ON
 
         return prompt
 
-    def _query_ollama(self, prompt: str) -> Optional[Dict]:
-        """Send prompt to Ollama with optimized streaming response"""
-        try:
-            payload = {
-                "model": self.model_name,
-                "prompt": prompt,
-                "stream": False,  # Non-streaming is actually faster for short responses
-                "options": {
-                    "temperature": 0.3,  # Slightly higher for natural conversation
-                    "top_p": 0.8,      # Allow more creativity for responses
-                    "num_predict": 120, # Enough tokens for conversational response + JSON
-                    "stop": ["\n\n"],   # Stop at double newline
-                    "repeat_penalty": 1.1
+    def _query_ollama(self, prompt: str, max_retries: int = 2) -> Optional[Dict]:
+        """Send prompt to Ollama with retry logic for timeout handling"""
+        for attempt in range(max_retries + 1):
+            try:
+                payload = {
+                    "model": self.model_name,
+                    "prompt": prompt,
+                    "stream": False,  # Non-streaming is actually faster for short responses
+                    "options": {
+                        "temperature": 0.3,  # Slightly higher for natural conversation
+                        "top_p": 0.8,      # Allow more creativity for responses
+                        "num_predict": 120, # Enough tokens for conversational response + JSON
+                        "stop": ["\n\n"],   # Stop at double newline
+                        "repeat_penalty": 1.1
+                    }
                 }
-            }
 
-            # Convert payload to JSON and encode
-            json_data = json.dumps(payload).encode('utf-8')
+                # Convert payload to JSON and encode
+                json_data = json.dumps(payload).encode('utf-8')
 
-            # Create request
-            req = urllib.request.Request(
-                f"{self.ollama_base_url}/api/generate",
-                data=json_data,
-                headers={'Content-Type': 'application/json'}
-            )
+                # Create request
+                req = urllib.request.Request(
+                    f"{self.ollama_base_url}/api/generate",
+                    data=json_data,
+                    headers={'Content-Type': 'application/json'}
+                )
 
-            with urllib.request.urlopen(req, timeout=5) as response:
-                if response.status == 200:
-                    response_data = json.loads(response.read().decode('utf-8'))
-                    response_text = response_data.get('response', '').strip()
+                # Increased timeout to handle slow responses, especially on first request
+                timeout_seconds = 20 if attempt == 0 else 15  # Extra time for first request
+                with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
+                    if response.status == 200:
+                        response_data = json.loads(response.read().decode('utf-8'))
+                        response_text = response_data.get('response', '').strip()
 
-                    # Try to parse as JSON directly first
-                    if response_text:
-                        try:
-                            # Try direct JSON parsing first
-                            parsed_json = json.loads(response_text.strip())
-                            return parsed_json
-                        except json.JSONDecodeError:
-                            # If that fails, try to extract JSON from text
+                        # Try to parse as JSON directly first
+                        if response_text:
                             try:
-                                start_idx = response_text.find('{')
-                                if start_idx != -1:
-                                    # Find the matching closing brace
-                                    brace_count = 0
-                                    end_idx = start_idx
-                                    for i, char in enumerate(response_text[start_idx:], start_idx):
-                                        if char == '{':
-                                            brace_count += 1
-                                        elif char == '}':
-                                            brace_count -= 1
-                                            if brace_count == 0:
-                                                end_idx = i + 1
-                                                break
-
-                                    if end_idx > start_idx:
-                                        json_str = response_text[start_idx:end_idx]
-                                        parsed_json = json.loads(json_str)
-                                        return parsed_json
+                                # Try direct JSON parsing first
+                                parsed_json = json.loads(response_text.strip())
+                                return parsed_json
                             except json.JSONDecodeError:
-                                pass
-                    return None
-                else:
-                    print(f"⚠️  Ollama API error: {response.status}")
-                    return None
+                                # If that fails, try to extract JSON from text
+                                try:
+                                    start_idx = response_text.find('{')
+                                    if start_idx != -1:
+                                        # Find the matching closing brace
+                                        brace_count = 0
+                                        end_idx = start_idx
+                                        for i, char in enumerate(response_text[start_idx:], start_idx):
+                                            if char == '{':
+                                                brace_count += 1
+                                            elif char == '}':
+                                                brace_count -= 1
+                                                if brace_count == 0:
+                                                    end_idx = i + 1
+                                                    break
 
-        except Exception as e:
-            print(f"⚠️  Ollama query failed: {e}")
-            return None
+                                        if end_idx > start_idx:
+                                            json_str = response_text[start_idx:end_idx]
+                                            parsed_json = json.loads(json_str)
+                                            return parsed_json
+                                except json.JSONDecodeError:
+                                    pass
+                        return None
+                    else:
+                        print(f"⚠️  Ollama API error: {response.status}")
+                        return None
+
+            except Exception as e:
+                print(f"⚠️  Ollama query failed (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                if attempt < max_retries:
+                    print(f"🔄 Retrying Ollama query in {attempt + 1} seconds...")
+                    time.sleep(attempt + 1)  # Progressive backoff
+                    continue
+                return None
 
     def _fallback_parse(self, voice_text: str) -> CommandIntent:
         """Fallback regex-based parsing when LLM is unavailable"""
@@ -280,11 +289,27 @@ Handle ALL commands naturally - no pattern matching limitations. Respond with ON
             'firefox': 'Firefox',
             'notes': 'Notes',
             'textedit': 'TextEdit',
+            'text edit': 'TextEdit',  # CRITICAL FIX: Handle space-separated names
+            'text editor': 'TextEdit',
             'terminal': 'Terminal',
             'calculator': 'Calculator',
             'calendar': 'Calendar',
             'mail': 'Mail',
-            'finder': 'Finder'
+            'finder': 'Finder',
+            'code': 'Visual Studio Code',
+            'vscode': 'Visual Studio Code',
+            'visual studio code': 'Visual Studio Code',
+            'photoshop': 'Adobe Photoshop',
+            'adobe photoshop': 'Adobe Photoshop',
+            'word': 'Microsoft Word',
+            'microsoft word': 'Microsoft Word',
+            'excel': 'Microsoft Excel',
+            'microsoft excel': 'Microsoft Excel',
+            'powerpoint': 'Microsoft PowerPoint',
+            'microsoft powerpoint': 'Microsoft PowerPoint',
+            'keynote': 'Keynote',
+            'pages': 'Pages',
+            'numbers': 'Numbers'
         }
         return mappings.get(app_name.lower(), app_name)
 

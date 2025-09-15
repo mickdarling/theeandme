@@ -969,6 +969,53 @@ HTML_TEMPLATE = '''
             animation: lightning 0.5s infinite;
         }
 
+        /* Keyboard Toggle Styles */
+        .keyboard-shortcut-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+
+        .keyboard-shortcut-indicator:hover {
+            opacity: 1;
+        }
+
+        .toggle-inactive {
+            opacity: 0.5;
+            filter: grayscale(50%);
+        }
+
+        .toggle-inactive .status {
+            background: rgba(244, 67, 54, 0.3) !important;
+            border-color: #f44336 !important;
+            color: #ffcccb;
+        }
+
+        .mute-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(244, 67, 54, 0.1);
+            pointer-events: none;
+            z-index: 999;
+            display: none;
+        }
+
+        .mute-overlay.active {
+            display: block;
+        }
+
         /* Echo Calibration Indicator Styles */
         .connection-status {
             padding: 8px 16px;
@@ -1130,6 +1177,14 @@ HTML_TEMPLATE = '''
     </style>
 </head>
 <body>
+    <!-- Keyboard Shortcut Indicator -->
+    <div class="keyboard-shortcut-indicator" id="keyboardIndicator">
+        ⌘+⇧+M to toggle • ESC to disable
+    </div>
+
+    <!-- Mute Overlay -->
+    <div class="mute-overlay" id="muteOverlay"></div>
+
     <div class="header">
         <h1>⚡ Integrated Ultra-Fast Voice Interface 2025</h1>
         <span class="ultra-fast-badge">ULTRA-FAST</span>
